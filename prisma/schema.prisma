@@ -1,0 +1,71 @@
+// ─────────────────────────────────────────────────────────────────────────
+// READ-ONLY MIRROR of the main CodeQuest schema (shared Postgres database).
+//
+// The main repo (`online-learning-and-online-exam-anti-cheat`) owns every
+// migration. This file lists only the tables/columns this service touches.
+//
+//   ✔ npm run prisma:generate   (safe — just builds the client)
+//   ✘ prisma migrate / prisma db push   (NEVER — a subset schema would
+//                                         drop every other table)
+//
+// When a mirrored model changes in the main repo, copy the change here.
+// ─────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model ExamSession {
+  id              String               @id
+  userId          String
+  status          String
+  expiresAt       DateTime
+  scorePercent    Int?
+  passed          Boolean?
+  submittedAt     DateTime?
+  updatedAt       DateTime             @updatedAt
+  examAttempt     ExamAttempt?
+  integrityEvents ExamIntegrityEvent[]
+}
+
+model ExamAttempt {
+  id           String      @id
+  sessionId    String      @unique
+  submittedAt  DateTime?
+  outcome      String?
+  scorePercent Int?
+  session      ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+/// One row per anti-cheat signal reported by the browser SDK.
+model ExamIntegrityEvent {
+  id        String      @id @default(cuid())
+  sessionId String
+  userId    String
+  type      String
+  metadata  Json?
+  createdAt DateTime    @default(now())
+  session   ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, type])
+  @@index([sessionId, createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  event     String
+  actorId   String?
+  targetId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([event, createdAt])
+  @@index([actorId, createdAt])
+  @@index([targetId, createdAt])
+  @@index([createdAt])
+}
