@@ -8,7 +8,7 @@
 /** Bump when the SDK's public contract changes; the exam page checks it. */
 export const SDK_VERSION = 1;
 
-export const MAX_FOCUS_LOSSES = 5;
+export const MAX_FOCUS_LOSSES = 3;
 export const MAX_FULLSCREEN_EXITS = 3;
 
 /** Every signal the SDK may report to `POST /api/v1/events`. */

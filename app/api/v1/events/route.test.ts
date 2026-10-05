@@ -108,14 +108,14 @@ describe("POST /api/v1/events", () => {
     countEventsMock.mockResolvedValueOnce(0).mockResolvedValueOnce(2);
     const response = await post({ type: "focus-loss", clientCount: 2 });
     const json = await response.json();
-    expect(json).toMatchObject({ ok: true, active: true, count: 2, limit: 5, terminated: null });
+    expect(json).toMatchObject({ ok: true, active: true, count: 2, limit: 3, terminated: null });
     expect(createEventMock).toHaveBeenCalledOnce();
     expect(updateSessionsMock).not.toHaveBeenCalled();
   });
 
   it("bans the attempt when the client tally reaches the limit", async () => {
-    countEventsMock.mockResolvedValueOnce(3).mockResolvedValueOnce(3);
-    const json = await (await post({ type: "focus-loss", clientCount: 5 })).json();
+    countEventsMock.mockResolvedValueOnce(2).mockResolvedValueOnce(2);
+    const json = await (await post({ type: "focus-loss", clientCount: 3 })).json();
     expect(json).toMatchObject({ active: false, status: "TERMINATED", terminated: "focus-loss-limit" });
     expect(updateAttemptsMock).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ outcome: "BANNED" }) }),
