@@ -19,6 +19,16 @@ const envSchema = z.object({
   /** "Sign in with Google" appears only when both are set. */
   GOOGLE_CLIENT_ID: z.string().optional().or(z.literal("")),
   GOOGLE_CLIENT_SECRET: z.string().optional().or(z.literal("")),
+  /**
+   * Sends the sign-up and password-reset codes. Without it, development logs
+   * the email to the console and production refuses to send.
+   */
+  RESEND_API_KEY: z.string().optional().or(z.literal("")),
+  /**
+   * Sender, on a domain verified in Resend, e.g. `Fenrir <no-reply@example.com>`.
+   * `onboarding@resend.dev` only delivers to the Resend account owner.
+   */
+  EMAIL_FROM: z.string().optional().or(z.literal("")),
 });
 
 const parsedEnv = envSchema.safeParse({
@@ -28,6 +38,8 @@ const parsedEnv = envSchema.safeParse({
   APP_URL: process.env.APP_URL,
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
+  EMAIL_FROM: process.env.EMAIL_FROM,
 });
 
 if (!parsedEnv.success) {

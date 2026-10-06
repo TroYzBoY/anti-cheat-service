@@ -37,6 +37,22 @@ model LoginThrottle {
   lockedUntil DateTime?
 }
 
+/// One-time 6-digit codes emailed for sign-up verification and password
+/// reset. Only an HMAC of the code is stored.
+model EmailCode {
+  id        String    @id @default(cuid())
+  email     String
+  /// VERIFY_EMAIL | RESET_PASSWORD
+  purpose   String
+  codeHash  String
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email, purpose, createdAt])
+}
+
 /// An exam authored in the admin builder. Learners only see PUBLISHED ones.
 /// Questions are copied into each `ExamSession` when it starts, so editing an
 /// exam never changes an attempt that is in progress or finished.

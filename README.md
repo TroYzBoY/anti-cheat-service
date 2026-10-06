@@ -6,7 +6,9 @@
 ## Юу хийдэг вэ
 
 **Суралцагч**
-- Имэйл/нууц үгээр эсвэл Google-ээр бүртгүүлж нэвтэрнэ.
+- Имэйл/нууц үгээр эсвэл Google-ээр бүртгүүлж нэвтэрнэ. Имэйлээр бүртгүүлбэл
+  имэйлд ирсэн 6 оронтой кодоор баталгаажуулна; нууц үгээ мартвал мөн кодоор
+  шинэчилнэ (код 10 минут хүчинтэй, 5 буруу оролдлогоор хүчингүй болно).
 - Нээлттэй шалгалтуудаас сонгоод **нэг удаа** өгнө: fullscreen, таймер,
   хариулт автоматаар хадгалагдана (refresh хийсэн ч үргэлжилнэ), хугацаа
   дуусахад автоматаар илгээгдэнэ, оноо шууд гарна.
@@ -31,6 +33,8 @@
 | `AUTH_SECRET` | 32+ тэмдэгт. Session cookie болон шалгалтын token-ийг гарын үсэглэнэ |
 | `APP_URL` | `https://fenrir-anticheat.vercel.app` (Google redirect URI-д) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Заавал биш. Байвал «Google-ээр нэвтрэх» гарна |
+| `RESEND_API_KEY` | Баталгаажуулах/сэргээх кодыг Resend-ээр илгээнэ. Production-д заавал |
+| `EMAIL_FROM` | Илгээгч, Resend дээр баталгаажсан домэйн дээр: `Fenrir <no-reply@таны-домэйн>` |
 
 ## Локалд ажиллуулах
 
@@ -57,6 +61,16 @@ Google Cloud Console → Google Auth Platform → **Clients → Web application*
 - Authorized redirect URI: `https://fenrir-anticheat.vercel.app/api/auth/google/callback`
 
 Audience-ийг **Publish app** болгоно, эс бөгөөс зөвхөн test user-ууд нэвтэрнэ.
+
+### Resend (имэйл код)
+
+1. resend.com → **API Keys → Create API Key** (Sending access) → `RESEND_API_KEY`.
+2. **Domains → Add Domain** → өөрийн домэйноо нэмж DNS бичлэгүүдийг тавина →
+   **Verified** болсны дараа `EMAIL_FROM="Fenrir <no-reply@таны-домэйн>"`.
+   Домэйн баталгаажуулаагүй үед `onboarding@resend.dev` зөвхөн таны Resend
+   бүртгэлийн имэйл рүү л илгээнэ — бусад хүмүүст код очихгүй.
+
+Локалд `RESEND_API_KEY`-гүй ажиллуулбал имэйлийг серверийн консол руу хэвлэнэ.
 
 ## Импортын формат
 

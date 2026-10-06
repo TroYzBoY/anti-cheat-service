@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 
 import { verifyPassword } from "@/lib/auth";
 import { loginSchema } from "@/lib/auth-schemas";
+import { sendCodeOrError } from "@/lib/email-codes";
 import { isSameOrigin, jsonError, jsonSuccess } from "@/lib/http";
 import {
   clearLoginFailures,
@@ -27,19 +28,21 @@ export async function POST(request: NextRequest) {
   const lockMinutes = await loginLockMinutes(email);
   if (lockMinutes > 0) {
     return jsonError(
-      `Олон удаа буруу оролдсон тул ${lockMinutes} минутын дараа дахин оролдоно уу.`,
+      `Олон удаа буруу оролдсон тул ${lockMinutes} минутын дараа дахин оролдоно уу, эсвэл «Нууц үгээ мартсан»-ыг ашиглана уу.`,
       429,
     );
   }
 
   const user = await prisma.user.findUnique({
     where: { email },
-    select: { id: true, role: true, passwordHash: true, googleSub: true },
+    select: { id: true, role: true, passwordHash: true, googleSub: true, emailVerifiedAt: true },
   });
   if (!user?.passwordHash) {
     await recordLoginFailure(email);
     return jsonError(
-      user?.googleSub ? "Энэ бүртгэл Google-ээр нэвтэрдэг. «Google-ээр нэвтрэх»-ийг ашиглана уу." : WRONG,
+      user?.googleSub
+        ? "Энэ бүртгэл Google-ээр нэвтэрдэг. «Google-ээр нэвтрэх»-ийг ашиглана уу."
+        : WRONG,
       401,
     );
   }
@@ -47,8 +50,18 @@ export async function POST(request: NextRequest) {
     await recordLoginFailure(email);
     return jsonError(WRONG, 401);
   }
-
   await clearLoginFailures(email);
+
+  // Right password but the email was never confirmed: send a code first.
+  if (!user.emailVerifiedAt) {
+    const failure = await sendCodeOrError(email, "VERIFY_EMAIL", { cooldownIsSent: true });
+    if (failure) return failure;
+    return jsonError("Имэйлээ баталгаажуулна уу. Имэйл рүү тань код илгээлээ.", 403, {
+      code: "EMAIL_NOT_VERIFIED",
+      email,
+    });
+  }
+
   const response = jsonSuccess({ redirect: "/" });
   setSessionCookie(response, await createSessionToken(user));
   return response;
