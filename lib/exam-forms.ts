@@ -41,8 +41,19 @@ export type ExamDraft = {
   passPercent: number;
   shuffleQuestions: boolean;
   shuffleChoices: boolean;
+  /** Only Safe Exam Browser with one of `sebConfigKeys` may take the exam. */
+  requireSeb: boolean;
+  sebConfigKeys: string[];
   questions: ExamDraftQuestion[];
 };
+
+/** Splits pasted Config Keys (one per line, or comma-separated). */
+export function parseSebConfigKeys(text: string): string[] {
+  return text
+    .split(/[\s,]+/)
+    .map((key) => key.trim().toLowerCase())
+    .filter(Boolean);
+}
 
 export const examDraftQuestionSchema = z
   .object({
@@ -102,9 +113,27 @@ export const examDraftSchema = z.object({
     .max(100, "Тэнцэх хувь 0–100."),
   shuffleQuestions: z.boolean(),
   shuffleChoices: z.boolean(),
+  requireSeb: z.boolean(),
+  sebConfigKeys: z
+    .array(
+      z
+        .string()
+        .trim()
+        .toLowerCase()
+        .regex(/^[0-9a-f]{64}$/, "SEB Config Key нь 64 тэмдэгттэй (0-9, a-f) байна."),
+    )
+    .max(10, "Хамгийн ихдээ 10 Config Key."),
   questions: z
     .array(examDraftQuestionSchema)
     .max(MAX_QUESTIONS, `Хамгийн ихдээ ${MAX_QUESTIONS} асуулт.`),
+}).superRefine((draft, ctx) => {
+  if (draft.requireSeb && draft.sebConfigKeys.length === 0) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["sebConfigKeys"],
+      message: "Safe Exam Browser шаардах бол Config Key оруулна уу.",
+    });
+  }
 });
 
 /**

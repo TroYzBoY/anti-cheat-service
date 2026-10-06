@@ -34,6 +34,8 @@ export default async function TakeExamPage({
       status: true,
       durationMinutes: true,
       passPercent: true,
+      requireSeb: true,
+      sebConfigFileName: true,
       _count: { select: { items: true } },
       sessions: {
         where: { userId: user.id },
@@ -93,6 +95,7 @@ export default async function TakeExamPage({
         passPercent: exam.passPercent,
         questionCount: exam._count.items,
       }}
+      seb={{ required: exam.requireSeb, hasConfigFile: Boolean(exam.sebConfigFileName) }}
       resumable={Boolean(view?.running)}
     />
   );

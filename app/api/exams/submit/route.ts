@@ -8,6 +8,7 @@ import { gradeAnswers, UNANSWERED } from "@/lib/exam-build";
 import { MAX_CHOICES } from "@/lib/exam-forms";
 import { isSameOrigin, jsonError, jsonSuccess } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { hasValidSebProof } from "@/lib/seb";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,10 @@ const SUBMIT_GRACE_MS = 30_000;
 const bodySchema = z.object({
   sessionId: z.string().min(1),
   answers: z.array(z.number().int().min(UNANSWERED).max(MAX_CHOICES - 1)),
+  /** Safe Exam Browser's Config Key hash for the exam page (see lib/seb.ts). */
+  seb: z
+    .object({ configKeyHash: z.string().max(200), url: z.string().max(2000) })
+    .nullish(),
 });
 
 export async function POST(request: NextRequest) {
@@ -39,10 +44,23 @@ export async function POST(request: NextRequest) {
         expiresAt: true,
         passPercent: true,
         answerKey: true,
+        exam: { select: { requireSeb: true, sebConfigKeys: true } },
       },
     });
     if (!session) return jsonError("Шалгалт олдсонгүй.", 404);
     if (session.userId !== user.id) return jsonError("Энэ шалгалт өөр хүнийх байна.", 403);
+    if (
+      session.exam.requireSeb &&
+      !hasValidSebProof({
+        configKeys: session.exam.sebConfigKeys,
+        request,
+        proof: parsed.data.seb,
+      })
+    ) {
+      return jsonError("Энэ шалгалтыг зөвхөн Safe Exam Browser-оор өгнө.", 403, {
+        code: "SEB_REQUIRED",
+      });
+    }
     if (session.status !== "ACTIVE") return jsonError("Энэ шалгалт дууссан байна.", 409);
     if (answers.length !== session.answerKey.length) {
       return jsonError(`${session.answerKey.length} хариулт хүлээж байсан.`, 400);

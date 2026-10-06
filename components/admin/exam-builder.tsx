@@ -17,13 +17,25 @@ import {
   MAX_CHOICES,
   MAX_QUESTIONS,
   MIN_CHOICES,
+  parseSebConfigKeys,
   type ExamDraft,
   type ExamDraftQuestion,
   type ExamStatus,
 } from "@/lib/exam-forms";
 
 type BuilderQuestion = ExamDraftQuestion & { key: string };
-type Meta = Omit<ExamDraft, "questions">;
+type Meta = Omit<ExamDraft, "questions" | "sebConfigKeys">;
+/** undefined = keep the stored .seb file, null = remove it. */
+type SebFileChange = { name: string; base64: string } | null | undefined;
+
+async function fileToBase64(file: File) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
 
 function withKey(question: ExamDraftQuestion): BuilderQuestion {
   return { ...question, key: crypto.randomUUID() };
@@ -44,11 +56,17 @@ export function ExamBuilder({
   initialStatus,
   initialDraft,
   attemptCount,
+  sebFileName = null,
+  sebStartUrl = null,
 }: {
   examId: string | null;
   initialStatus: ExamStatus;
   initialDraft: ExamDraft;
   attemptCount: number;
+  /** Name of the stored .seb file, if any. */
+  sebFileName?: string | null;
+  /** The exam page URL to put in the .seb config as Start URL. */
+  sebStartUrl?: string | null;
 }) {
   const router = useRouter();
   const [meta, setMeta] = useState<Meta>(() => ({
@@ -58,7 +76,11 @@ export function ExamBuilder({
     passPercent: initialDraft.passPercent,
     shuffleQuestions: initialDraft.shuffleQuestions,
     shuffleChoices: initialDraft.shuffleChoices,
+    requireSeb: initialDraft.requireSeb,
   }));
+  const [sebKeysText, setSebKeysText] = useState(initialDraft.sebConfigKeys.join("\n"));
+  const [storedSebFile, setStoredSebFile] = useState<string | null>(sebFileName);
+  const [sebFile, setSebFile] = useState<SebFileChange>(undefined);
   const [questions, setQuestions] = useState<BuilderQuestion[]>(() =>
     (initialDraft.questions.length > 0
       ? initialDraft.questions
@@ -148,6 +170,7 @@ export function ExamBuilder({
   const save = async () => {
     const draft: ExamDraft = {
       ...meta,
+      sebConfigKeys: parseSebConfigKeys(sebKeysText),
       questions: questions
         .filter((question) => !isBlank(question))
         .map(({ prompt, choices, correctIndex }) => ({ prompt, choices, correctIndex })),
@@ -165,10 +188,14 @@ export function ExamBuilder({
     setSaving(true);
     setNotice(null);
     try {
-      const result = await saveExamAction({ examId, status, draft });
+      const result = await saveExamAction({ examId, status, draft, sebConfigFile: sebFile });
       if (!result.ok) {
         setNotice({ tone: "bad", text: result.error });
         return;
+      }
+      if (sebFile !== undefined) {
+        setStoredSebFile(sebFile?.name ?? null);
+        setSebFile(undefined);
       }
       setDirty(false);
       setNotice({ tone: "good", text: "Хадгаллаа." });
@@ -250,6 +277,92 @@ export function ExamBuilder({
             Сонголтын дарааллыг холих
           </label>
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <label className="flex items-center gap-2 font-semibold text-white">
+          <input
+            type="checkbox"
+            checked={meta.requireSeb}
+            onChange={(event) => updateMeta({ requireSeb: event.target.checked })}
+            className="h-4 w-4 accent-[#7c3aed]"
+          />
+          Safe Exam Browser (SEB) шаардах
+        </label>
+        <p className="mt-1 text-sm text-white/55">
+          Асаавал энэ шалгалтыг зөвхөн SEB-ээр эхлүүлж, илгээх боломжтой. SEB бусад програм, overlay
+          AI, дэлгэц бичихийг хаадаг.
+        </p>
+        {meta.requireSeb ? (
+          <div className="mt-4 space-y-4">
+            <ol className="list-decimal space-y-1 rounded-xl border border-white/10 bg-white/[0.02] py-3 pl-8 pr-3 text-[13px] text-white/70">
+              <li>
+                SEB Config Tool-оор шинэ тохиргоо үүсгэнэ. Start URL:{" "}
+                <code className="break-all text-violet-300">
+                  {sebStartUrl ?? "шалгалтыг хадгалсны дараа гарна"}
+                </code>
+              </li>
+              <li>
+                Security → Kiosk mode: <b>Create new desktop</b>; Applications → Prohibited processes-д
+                ChatGPT, Discord, AnyDesk, TeamViewer, OBS гэх мэтийг нэмнэ.
+              </li>
+              <li>
+                Exam → <b>Use Browser Exam Key and Configuration Key</b>-ийг асааж, гарсан{" "}
+                <b>Configuration Key</b>-г доор хуулна.
+              </li>
+              <li>.seb файлаа хадгалаад доор байршуулна — суралцагчид эндээс татна.</li>
+            </ol>
+            <label className="block text-sm text-white/65">
+              Config Key (мөр бүрд нэг, 64 тэмдэгт)
+              <textarea
+                value={sebKeysText}
+                onChange={(event) => {
+                  setSebKeysText(event.target.value);
+                  touch();
+                }}
+                rows={2}
+                spellCheck={false}
+                placeholder="3f2a…e91c"
+                className={`mt-1 font-mono text-[13px] ${inputClass}`}
+              />
+            </label>
+            <div className="text-sm text-white/65">
+              .seb тохиргооны файл
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-white/80">
+                  {sebFile ? sebFile.name : sebFile === null ? "Устгагдана" : (storedSebFile ?? "Байршуулаагүй")}
+                </span>
+                <label className="cursor-pointer rounded-lg border border-white/15 px-3 py-1.5 text-white/80 hover:bg-white/[0.05]">
+                  Файл сонгох
+                  <input
+                    type="file"
+                    accept=".seb"
+                    className="sr-only"
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (!file) return;
+                      setSebFile({ name: file.name, base64: await fileToBase64(file) });
+                      touch();
+                    }}
+                  />
+                </label>
+                {(storedSebFile && sebFile !== null) || sebFile ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSebFile(null);
+                      touch();
+                    }}
+                    className="rounded-lg px-3 py-1.5 text-rose-300/80 hover:bg-rose-500/10"
+                  >
+                    Устгах
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {questions.map((question, index) => {

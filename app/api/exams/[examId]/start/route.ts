@@ -9,6 +9,7 @@ import { buildExamSession, type SessionQuestion } from "@/lib/exam-build";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { isSameOrigin, jsonError, jsonSuccess } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { hasValidSebProof, type SebProof } from "@/lib/seb";
 import { createAntiCheatToken } from "@/lib/token";
 
 export const dynamic = "force-dynamic";
@@ -36,11 +37,22 @@ export async function POST(
     const { examId } = await params;
     const exam = await prisma.exam.findUnique({
       where: { id: examId },
+      omit: { sebConfigFile: true },
       include: { items: { orderBy: { position: "asc" } } },
     });
     // Admins may try out drafts; learners only see published exams.
     if (!exam || (exam.status !== "PUBLISHED" && user.role !== "ADMIN")) {
       return jsonError("Шалгалт олдсонгүй эсвэл хаагдсан байна.", 404);
+    }
+
+    const body = (await request.json().catch(() => null)) as { seb?: SebProof } | null;
+    if (
+      exam.requireSeb &&
+      !hasValidSebProof({ configKeys: exam.sebConfigKeys, request, proof: body?.seb })
+    ) {
+      return jsonError("Энэ шалгалтыг зөвхөн Safe Exam Browser-оор өгнө.", 403, {
+        code: "SEB_REQUIRED",
+      });
     }
 
     const existing = await prisma.examSession.findUnique({

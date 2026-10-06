@@ -30,12 +30,33 @@ function revalidateExam(examId: string) {
  * Create or overwrite an exam from the builder. Questions are replaced
  * wholesale; sessions already started keep their own frozen copy.
  */
+const MAX_SEB_FILE_BYTES = 512 * 1024;
+
 export async function saveExamAction(input: {
   examId: string | null;
   status: ExamStatus;
   draft: ExamDraft;
+  /** New .seb file (base64), null to remove it, undefined to keep it. */
+  sebConfigFile?: { name: string; base64: string } | null;
 }): Promise<SaveExamResult> {
   const admin = await requireAdmin();
+
+  let sebFile: {
+    sebConfigFile: Uint8Array<ArrayBuffer> | null;
+    sebConfigFileName: string | null;
+  } | null = null;
+  if (input.sebConfigFile === null) {
+    sebFile = { sebConfigFile: null, sebConfigFileName: null };
+  } else if (input.sebConfigFile) {
+    const bytes = Buffer.from(input.sebConfigFile.base64, "base64");
+    if (bytes.length === 0 || bytes.length > MAX_SEB_FILE_BYTES) {
+      return { ok: false, error: ".seb файл хоосон эсвэл 512KB-аас том байна." };
+    }
+    sebFile = {
+      sebConfigFile: new Uint8Array(bytes),
+      sebConfigFileName: input.sebConfigFile.name.slice(0, 200),
+    };
+  }
 
   const parsed = examDraftSchema.safeParse(input.draft);
   if (!parsed.success) {
@@ -56,7 +77,10 @@ export async function saveExamAction(input: {
     passPercent: draft.passPercent,
     shuffleQuestions: draft.shuffleQuestions,
     shuffleChoices: draft.shuffleChoices,
+    requireSeb: draft.requireSeb,
+    sebConfigKeys: draft.sebConfigKeys,
     status: input.status,
+    ...sebFile,
   };
   const items = draft.questions.map((question, position) => ({
     position,

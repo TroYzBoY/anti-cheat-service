@@ -26,6 +26,7 @@ export default async function AdminExamsPage() {
       title: true,
       status: true,
       durationMinutes: true,
+      requireSeb: true,
       createdAt: true,
       _count: { select: { items: true, sessions: true } },
     },
@@ -77,7 +78,14 @@ export default async function AdminExamsPage() {
                         >
                           {exam.title}
                         </Link>
-                        <p className="text-[11px] text-white/45">{exam.durationMinutes} минут</p>
+                        <p className="text-[11px] text-white/45">
+                          {exam.durationMinutes} минут
+                          {exam.requireSeb ? (
+                            <span className="ml-2 rounded border border-violet-400/30 bg-violet-500/10 px-1.5 py-0.5 font-semibold text-violet-200">
+                              SEB
+                            </span>
+                          ) : null}
+                        </p>
                       </td>
                       <td className="px-4 py-3">
                         <Pill tone={STATUS_TONE[status]}>{EXAM_STATUS_LABELS[status]}</Pill>

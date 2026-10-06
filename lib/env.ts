@@ -72,3 +72,11 @@ export function isGoogleConfigured() {
 export function appOrigin(requestUrl: string) {
   return env.APP_URL ? new URL(env.APP_URL).origin : new URL(requestUrl).origin;
 }
+
+/** Same, for server components, which only see the request headers. */
+export function appOriginFromHeaders(headers: Headers) {
+  if (env.APP_URL) return new URL(env.APP_URL).origin;
+  const host = headers.get("x-forwarded-host") ?? headers.get("host") ?? "localhost";
+  const proto = headers.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}

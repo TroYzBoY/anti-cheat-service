@@ -82,6 +82,24 @@ Gmail өдөрт ~500 имэйл илгээнэ; эхэндээ spam хавта�
 
 Локалд `RESEND_API_KEY`-гүй ажиллуулбал имэйлийг серверийн консол руу хэвлэнэ.
 
+### Safe Exam Browser (SEB) шаардах
+
+Шалгалтын тохиргоонд «Safe Exam Browser (SEB) шаардах»-ыг асаавал тэр шалгалтыг
+зөвхөн SEB-ээр эхлүүлж, илгээнэ (сервер SEB-ийн Config Key hash-ийг шалгана).
+SEB нь бусад програм, overlay AI, дэлгэц бичих, VM, remote desktop-ийг хаадаг.
+
+1. https://safeexambrowser.org-оос **SEB Config Tool**-ийг ажиллуулна (Windows).
+2. **General → Start URL** = шалгалт засах хуудсанд харагдах хаяг
+   (`https://fenrir-anticheat.vercel.app/exams/<id>`).
+3. **Security → Kiosk mode: Create new desktop**; **Applications → Prohibited
+   processes**-д ChatGPT, Discord, AnyDesk, TeamViewer, OBS гэх мэтийг нэмнэ.
+4. **Exam → Use Browser Exam Key and Configuration Key** асаагаад гарсан
+   **Configuration Key**-г Fenrir-ийн шалгалтын «Config Key» талбарт хуулна.
+5. .seb файлаа хадгалаад мөн тэнд байршуулна — суралцагчид шалгалтын хуудаснаас
+   татаж нээнэ. Тохиргоо өөрчлөгдвөл Config Key ч өөрчлөгдөнө.
+
+Суралцагчдад SEB суулгах шаардлагатай (Windows, macOS, iPad).
+
 ## Импортын формат
 
 Excel/CSV — мөр бүр нэг асуулт, сүүлийн нүд нь зөв хариулт (үсэг, дугаар эсвэл текст):

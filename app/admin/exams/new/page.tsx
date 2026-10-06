@@ -27,6 +27,8 @@ export default async function NewExamPage() {
           passPercent: 60,
           shuffleQuestions: false,
           shuffleChoices: false,
+          requireSeb: false,
+          sebConfigKeys: [],
           questions: [],
         }}
         attemptCount={0}

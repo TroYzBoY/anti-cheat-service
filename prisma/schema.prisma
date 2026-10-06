@@ -57,20 +57,27 @@ model EmailCode {
 /// Questions are copied into each `ExamSession` when it starts, so editing an
 /// exam never changes an attempt that is in progress or finished.
 model Exam {
-  id               String        @id @default(cuid())
-  title            String
-  description      String        @default("")
+  id                String        @id @default(cuid())
+  title             String
+  description       String        @default("")
   /// DRAFT (admins only) | PUBLISHED (learners can start) | CLOSED (results only)
-  status           String        @default("DRAFT")
-  durationMinutes  Int           @default(30)
-  passPercent      Int           @default(60)
-  shuffleQuestions Boolean       @default(false)
-  shuffleChoices   Boolean       @default(false)
-  createdById      String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  items            ExamItem[]
-  sessions         ExamSession[]
+  status            String        @default("DRAFT")
+  durationMinutes   Int           @default(30)
+  passPercent       Int           @default(60)
+  shuffleQuestions  Boolean       @default(false)
+  shuffleChoices    Boolean       @default(false)
+  /// Only Safe Exam Browser running one of `sebConfigKeys` may start/submit.
+  requireSeb        Boolean       @default(false)
+  /// Config Keys (64 hex chars, from SEB Config Tool) of the accepted .seb files.
+  sebConfigKeys     String[]      @default([])
+  /// The .seb file learners download to open the exam in SEB (optional).
+  sebConfigFile     Bytes?
+  sebConfigFileName String?
+  createdById       String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  items             ExamItem[]
+  sessions          ExamSession[]
 
   @@index([status, createdAt])
 }

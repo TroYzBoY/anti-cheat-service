@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { ExamBuilder } from "@/components/admin/exam-builder";
 import { PageHeader } from "@/components/admin/ui";
 import { requireAdmin } from "@/lib/auth";
+import { appOriginFromHeaders } from "@/lib/env";
 import { isExamStatus } from "@/lib/exam-forms";
 import { prisma } from "@/lib/prisma";
 
@@ -18,12 +20,14 @@ export default async function EditExamPage({
   const { examId } = await params;
   const exam = await prisma.exam.findUnique({
     where: { id: examId },
+    omit: { sebConfigFile: true },
     include: {
       items: { orderBy: { position: "asc" } },
       _count: { select: { sessions: true } },
     },
   });
   if (!exam) notFound();
+  const origin = appOriginFromHeaders(await headers());
 
   return (
     <>
@@ -41,6 +45,8 @@ export default async function EditExamPage({
           passPercent: exam.passPercent,
           shuffleQuestions: exam.shuffleQuestions,
           shuffleChoices: exam.shuffleChoices,
+          requireSeb: exam.requireSeb,
+          sebConfigKeys: exam.sebConfigKeys,
           questions: exam.items.map((item) => ({
             prompt: item.prompt,
             choices: item.choices,
@@ -48,6 +54,8 @@ export default async function EditExamPage({
           })),
         }}
         attemptCount={exam._count.sessions}
+        sebFileName={exam.sebConfigFileName}
+        sebStartUrl={`${origin}/exams/${exam.id}`}
       />
     </>
   );

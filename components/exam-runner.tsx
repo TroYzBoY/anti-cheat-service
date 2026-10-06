@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -15,6 +15,42 @@ import type {
 } from "@/sdk/types";
 
 type AntiCheatTerminationReason = Termination["reason"];
+
+/** Safe Exam Browser's JavaScript API (SEB 3.x on Windows, macOS, iOS). */
+type SebApi = {
+  security?: { configKey?: string; updateKeys?: (callback: () => void) => void };
+};
+
+function sebApi(): SebApi | undefined {
+  return (window as Window & { SafeExamBrowser?: SebApi }).SafeExamBrowser;
+}
+
+function detectSeb() {
+  return Boolean(sebApi()) || /\bSEB\//.test(navigator.userAgent);
+}
+
+const noSubscribe = () => () => undefined;
+
+/**
+ * What the server checks to confirm Safe Exam Browser: SEB's Config Key hash
+ * for this page URL. `updateKeys` refreshes it after client-side navigation.
+ */
+async function sebProof(): Promise<{ configKeyHash: string; url: string } | null> {
+  const security = sebApi()?.security;
+  if (!security) return null;
+  if (security.updateKeys) {
+    await new Promise<void>((resolve) => {
+      const timeout = window.setTimeout(resolve, 2000);
+      security.updateKeys!(() => {
+        window.clearTimeout(timeout);
+        resolve();
+      });
+    });
+  }
+  return typeof security.configKey === "string"
+    ? { configKeyHash: security.configKey, url: window.location.href.split("#")[0] }
+    : null;
+}
 
 export type ExamSummary = {
   id: string;
@@ -121,13 +157,18 @@ function terminationText(
 
 export function ExamRunner({
   exam,
+  seb,
   resumable,
 }: {
   exam: ExamSummary;
+  /** Safe Exam Browser requirement for this exam. */
+  seb: { required: boolean; hasConfigFile: boolean };
   /** The learner already has a running attempt (e.g. after a reload). */
   resumable: boolean;
 }) {
   const router = useRouter();
+  // False on the server; read from the browser after hydration.
+  const inSeb = useSyncExternalStore(noSubscribe, detectSeb, () => false);
   const [sdkState, setSdkState] = useState<SdkState>({ status: "loading" });
   const [loadAttempt, setLoadAttempt] = useState(0);
 
@@ -256,8 +297,9 @@ export function ExamRunner({
     setPhase("starting");
 
     // Must run inside the click's user activation, before any network wait.
-    const fullscreenRequest = await sdk.requestFullscreen();
-    if (fullscreenRequest.blocked && fullscreenRequest.state.supported) {
+    // SEB is already a locked-down full-screen kiosk.
+    const fullscreenRequest = inSeb ? null : await sdk.requestFullscreen();
+    if (fullscreenRequest?.blocked && fullscreenRequest.state.supported) {
       setError(
         "Fullscreen горимд орж чадсангүй. Browser-ийн зөвшөөрлийг шалгаад дахин оролдоно уу.",
       );
@@ -267,7 +309,11 @@ export function ExamRunner({
 
     let data: Record<string, unknown> | null = null;
     try {
-      const res = await fetch(`/api/exams/${exam.id}/start`, { method: "POST" });
+      const res = await fetch(`/api/exams/${exam.id}/start`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ seb: await sebProof() }),
+      });
       data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || !data?.ok) {
         exitFullscreen();
@@ -357,7 +403,11 @@ export function ExamRunner({
         const res = await fetch("/api/exams/submit", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sessionId, answers: answersRef.current }),
+          body: JSON.stringify({
+            sessionId,
+            answers: answersRef.current,
+            seb: await sebProof(),
+          }),
         });
         const data = (await res.json().catch(() => null)) as Record<
           string,
@@ -496,6 +546,11 @@ export function ExamRunner({
           <div className="mt-6 rounded-2xl border border-amber-400/25 bg-amber-500/[0.07] p-5">
             <p className="font-bold text-amber-200">Шалгалтын дүрэм</p>
             <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-white/80">
+              {seb.required ? (
+                <li>
+                  Энэ шалгалтыг зөвхөн <strong>Safe Exam Browser (SEB)</strong>-ээр өгнө.
+                </li>
+              ) : null}
               <li>Шалгалт fullscreen горимд явагдана.</li>
               <li>
                 Шалгалтын үеэр <strong>гарын товчлуур ажиллахгүй</strong> — хариултаа
@@ -545,30 +600,66 @@ export function ExamRunner({
             </p>
           ) : null}
 
-          <label className="mt-6 flex cursor-pointer items-start gap-3 text-sm text-white/85">
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={(event) => setAgreed(event.target.checked)}
-              className="mt-0.5 h-4 w-4 accent-[#7c3aed]"
-            />
-            <span>Дүрмийг уншиж танилцсан бөгөөд зөвшөөрч байна.</span>
-          </label>
+          {seb.required && !inSeb ? (
+            <div className="mt-6 rounded-2xl border border-violet-400/30 bg-violet-500/[0.08] p-5 text-sm text-white/85">
+              <p className="font-bold text-white">Safe Exam Browser шаардлагатай</p>
+              <ol className="mt-3 list-decimal space-y-1.5 pl-5">
+                <li>
+                  Safe Exam Browser-ийг{" "}
+                  <a
+                    href="https://safeexambrowser.org/download_en.html"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-violet-300 underline"
+                  >
+                    safeexambrowser.org
+                  </a>{" "}
+                  сайтаас татаж суулгана (Windows, macOS, iPad).
+                </li>
+                <li>
+                  {seb.hasConfigFile
+                    ? "Доорх товчоор шалгалтын тохиргоог татаж нээнэ — SEB энэ шалгалтыг шууд нээнэ."
+                    : "Админаас авсан .seb тохиргооны файлыг нээнэ — SEB энэ шалгалтыг шууд нээнэ."}
+                </li>
+                <li>SEB дотор дахин нэвтэрч, шалгалтаа эхлүүлнэ.</li>
+              </ol>
+              {seb.hasConfigFile ? (
+                <a
+                  href={`/exams/${exam.id}/seb`}
+                  className="mt-4 inline-flex rounded-xl bg-violet-600 px-4 py-2.5 font-bold text-white hover:bg-violet-500"
+                >
+                  ↓ SEB тохиргоо татах (.seb)
+                </a>
+              ) : null}
+            </div>
+          ) : (
+            <>
+              <label className="mt-6 flex cursor-pointer items-start gap-3 text-sm text-white/85">
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(event) => setAgreed(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-[#7c3aed]"
+                />
+                <span>Дүрмийг уншиж танилцсан бөгөөд зөвшөөрч байна.</span>
+              </label>
 
-          <button
-            type="button"
-            onClick={() => void start()}
-            disabled={!agreed || !sdk || phase === "starting"}
-            className="mt-5 w-full rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3.5 text-lg font-bold text-white shadow-lg shadow-violet-900/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {phase === "starting"
-              ? "Эхлүүлж байна…"
-              : sdkState.status === "loading"
-                ? "Хамгаалалтын сервист холбогдож байна…"
-                : resumable
-                  ? "Шалгалтаа үргэлжлүүлэх"
-                  : "Шалгалт эхлүүлэх"}
-          </button>
+              <button
+                type="button"
+                onClick={() => void start()}
+                disabled={!agreed || !sdk || phase === "starting"}
+                className="mt-5 w-full rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-3.5 text-lg font-bold text-white shadow-lg shadow-violet-900/30 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {phase === "starting"
+                  ? "Эхлүүлж байна…"
+                  : sdkState.status === "loading"
+                    ? "Хамгаалалтын сервист холбогдож байна…"
+                    : resumable
+                      ? "Шалгалтаа үргэлжлүүлэх"
+                      : "Шалгалт эхлүүлэх"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     );
@@ -578,7 +669,7 @@ export function ExamRunner({
 
   const lowTime = remainingMs !== null && remainingMs <= 60_000;
   const needsFullscreen =
-    phase === "active" && fullscreen.supported && !fullscreen.active;
+    phase === "active" && !inSeb && fullscreen.supported && !fullscreen.active;
 
   return (
     <div className="min-h-screen bg-[#070a12] text-[#ecedf6]">
