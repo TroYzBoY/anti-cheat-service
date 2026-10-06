@@ -262,53 +262,28 @@ export function hardenElement(element: HTMLElement): () => void {
   };
 }
 
-const ZOOM_KEYS = new Set(["+", "-", "=", "_", "0", "Add", "Subtract"]);
-const ZOOM_CODES = new Set([
-  "Equal",
-  "Minus",
-  "Digit0",
-  "NumpadAdd",
-  "NumpadSubtract",
-  "Numpad0",
-]);
+/** Keyboard Lock API (Chromium); absent from the TypeScript DOM typings. */
+type KeyboardLock = { lock?: (keyCodes?: string[]) => Promise<void>; unlock?: () => void };
+
+function keyboardLock(): KeyboardLock | undefined {
+  return (navigator as Navigator & { keyboard?: KeyboardLock }).keyboard;
+}
 
 /**
- * Window-level input lockdown for the active exam: DevTools shortcuts,
- * browser zoom, clipboard and the context menu. Returns a teardown.
+ * Window-level input lockdown for the active exam: every key is swallowed
+ * (answers are clicked, so the keyboard has no use), plus browser zoom,
+ * clipboard and the context menu. Returns a teardown.
+ *
+ * Page-level listeners can't see keys the browser or OS handles first
+ * (Alt+Tab, Ctrl+W, Esc to leave fullscreen…). In fullscreen, Chromium's
+ * Keyboard Lock hands those to the page too, so they get swallowed as well;
+ * leaving fullscreen then takes holding Esc, which counts as a violation.
+ * Ctrl+Alt+Del and other OS-level combinations can never be blocked.
  */
 export function installInputBlockers(): () => void {
-  const onKeyDown = (e: KeyboardEvent) => {
-    // Block DevTools shortcuts: F12, Ctrl+Shift+C/I/J/K, Ctrl+U
-    if (e.key === "F12") {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      return;
-    }
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
-      const k = e.key.toLowerCase();
-      if (k === "c" || k === "i" || k === "j" || k === "k") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        return;
-      }
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "u") {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      return;
-    }
-    if (e.ctrlKey || e.metaKey) {
-      if (ZOOM_KEYS.has(e.key) || ZOOM_CODES.has(e.code)) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        return;
-      }
-      // Block clipboard shortcuts
-      const k = e.key.toLowerCase();
-      if (k === "c" || k === "v" || k === "x" || k === "a") {
-        e.preventDefault();
-      }
-    }
+  const swallowKey = (e: KeyboardEvent) => {
+    e.preventDefault();
+    e.stopImmediatePropagation();
   };
   const onWheel = (e: WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
@@ -318,19 +293,23 @@ export function installInputBlockers(): () => void {
   };
   const prevent = (e: Event) => e.preventDefault();
 
-  window.addEventListener("keydown", onKeyDown, true);
+  const keyEvents = ["keydown", "keypress", "keyup"] as const;
+  for (const name of keyEvents) window.addEventListener(name, swallowKey, true);
   window.addEventListener("wheel", onWheel, { capture: true, passive: false });
   window.addEventListener("paste", prevent, true);
   window.addEventListener("copy", prevent, true);
   window.addEventListener("cut", prevent, true);
   window.addEventListener("contextmenu", prevent, true);
+  // No key list = every key. Rejected outside a secure context; harmless.
+  keyboardLock()?.lock?.().catch(() => undefined);
   return () => {
-    window.removeEventListener("keydown", onKeyDown, true);
+    for (const name of keyEvents) window.removeEventListener(name, swallowKey, true);
     window.removeEventListener("wheel", onWheel, true);
     window.removeEventListener("paste", prevent, true);
     window.removeEventListener("copy", prevent, true);
     window.removeEventListener("cut", prevent, true);
     window.removeEventListener("contextmenu", prevent, true);
+    keyboardLock()?.unlock?.();
   };
 }
 

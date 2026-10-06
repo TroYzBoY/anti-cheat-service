@@ -206,12 +206,12 @@ export function ExamRunner({
     return sdk.hardenElement(element);
   }, [sdk, phase]);
 
-  // Once the attempt is over, drop the SDK session and leave fullscreen.
+  // Once the attempt is over, drop the SDK session (which also gives the
+  // keyboard back). Fullscreen stays until the learner presses the button.
   useEffect(() => {
     if (phase !== "done" && phase !== "terminated") return;
     acSessionRef.current?.destroy();
     acSessionRef.current = null;
-    exitFullscreen();
   }, [phase]);
 
   useEffect(
@@ -432,7 +432,7 @@ export function ExamRunner({
         <p className="mt-3 text-sm text-white/55">
           Энэ шалгалтыг дахин өгөх боломжгүй. Алдаа гарсан гэж үзвэл админд хандана уу.
         </p>
-        <BackLink />
+        <FinishedActions inFullscreen={fullscreen.active} />
       </CenteredCard>
     );
   }
@@ -467,7 +467,7 @@ export function ExamRunner({
             ? `Тэнцлээ (босго ${result.passPercent}%)`
             : `Тэнцсэнгүй (босго ${result.passPercent}%)`}
         </p>
-        <BackLink />
+        <FinishedActions inFullscreen={fullscreen.active} />
       </CenteredCard>
     );
   }
@@ -495,6 +495,10 @@ export function ExamRunner({
             <p className="font-bold text-amber-200">Шалгалтын дүрэм</p>
             <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-white/80">
               <li>Шалгалт fullscreen горимд явагдана.</li>
+              <li>
+                Шалгалтын үеэр <strong>гарын товчлуур ажиллахгүй</strong> — хариултаа
+                хулганаар сонгоно.
+              </li>
               <li>
                 Өөр цонх, tab руу шилжих эсвэл browser-оос гарах бүр тоологдоно.{" "}
                 <strong className="text-amber-200">
@@ -759,11 +763,29 @@ function CenteredCard({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Shown once the attempt is over: leave fullscreen, then go back to the list. */
+function FinishedActions({ inFullscreen }: { inFullscreen: boolean }) {
+  return (
+    <div className="mt-6 flex flex-wrap gap-2">
+      {inFullscreen ? (
+        <button
+          type="button"
+          onClick={exitFullscreen}
+          className="inline-flex rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-500"
+        >
+          ⤡ Fullscreen-ээс гарах
+        </button>
+      ) : null}
+      <BackLink />
+    </div>
+  );
+}
+
 function BackLink() {
   return (
     <Link
       href="/exams"
-      className="mt-6 inline-flex rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-white/85 hover:bg-white/[0.05]"
+      className="inline-flex rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-white/85 hover:bg-white/[0.05]"
     >
       ← Шалгалтын жагсаалт руу буцах
     </Link>
