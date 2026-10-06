@@ -1,13 +1,16 @@
 import "server-only";
 
-import { jwtVerify } from "jose";
+import { jwtVerify, SignJWT } from "jose";
+
 import { env } from "@/lib/env";
 
-/** Must match `lib/exam/anti-cheat-token.ts` in the main app. */
-export const ANTI_CHEAT_TOKEN_ISSUER = "codequest";
-export const ANTI_CHEAT_TOKEN_AUDIENCE = "codequest-anti-cheat";
+export const ANTI_CHEAT_TOKEN_ISSUER = "fenrir";
+export const ANTI_CHEAT_TOKEN_AUDIENCE = "fenrir-anti-cheat";
 
-const secret = new TextEncoder().encode(env.ANTI_CHEAT_TOKEN_SECRET);
+/** Lets a violation raised in the final seconds still be recorded. */
+const TOKEN_GRACE_SECONDS = 5 * 60;
+
+const secret = new TextEncoder().encode(env.AUTH_SECRET);
 
 export type AntiCheatTokenClaims = {
   userId: string;
@@ -15,11 +18,26 @@ export type AntiCheatTokenClaims = {
 };
 
 /**
- * The main app signs one token per exam session at `POST /api/exam/start`
- * (`sub` = user id, `sid` = exam session id, expires shortly after the exam
- * does). Session cookies can't be shared across `*.vercel.app` projects, so
- * this token is the only credential the service accepts.
+ * The exam page hands this to the browser SDK, which sends it as
+ * `Authorization: Bearer …` with every signal. It is scoped to one user and
+ * one exam session, and its audience differs from the session cookie's, so
+ * neither token works in place of the other.
  */
+export async function createAntiCheatToken({
+  userId,
+  sessionId,
+  expiresAt,
+}: AntiCheatTokenClaims & { expiresAt: Date }): Promise<string> {
+  return new SignJWT({ sid: sessionId })
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setIssuer(ANTI_CHEAT_TOKEN_ISSUER)
+    .setAudience(ANTI_CHEAT_TOKEN_AUDIENCE)
+    .setSubject(userId)
+    .setIssuedAt()
+    .setExpirationTime(Math.floor(expiresAt.getTime() / 1000) + TOKEN_GRACE_SECONDS)
+    .sign(secret);
+}
+
 export async function verifyAntiCheatToken(
   token: string,
 ): Promise<AntiCheatTokenClaims | null> {

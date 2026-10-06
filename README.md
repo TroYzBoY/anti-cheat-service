@@ -1,85 +1,81 @@
-# CodeQuest Anti-Cheat Service
+# Fenrir — онлайн шалгалтын систем
 
-Standalone anti-cheat service for CodeQuest exams. It runs as its own Vercel
-project and shares the Postgres database with the main CodeQuest app.
+Хуурлаас хамгаалалттай, бие даасан онлайн шалгалтын web app
+(`https://fenrir-anticheat.vercel.app`). Next.js 16 · Prisma 7 · Postgres (Supabase).
 
-```
- learner's exam tab (main app origin)            anti-cheat service (this repo)
- ┌───────────────────────────────────┐           ┌──────────────────────────────┐
- │ /exam page                        │  <script> │ GET  /sdk/v1.js              │
- │  └─ window.CodeQuestAntiCheat ◄───┼───────────┤                              │
- │       DevTools · focus · fullscreen│  events   │ POST /api/v1/events          │
- │       duplicate tab · fetch MITM ──┼──────────►│  verify token → record →     │
- │       overlay · multi-monitor      │  Bearer   │  apply policy → terminate    │
- └───────────────┬───────────────────┘   token   └──────────────┬───────────────┘
-                 │ POST /api/exam/start (mints token)            │
-                 ▼                                               ▼
-           main app API  ──────────────►  shared Postgres  ◄──────
-```
+## Юу хийдэг вэ
 
-## What lives here
+**Суралцагч**
+- Имэйл/нууц үгээр эсвэл Google-ээр бүртгүүлж нэвтэрнэ.
+- Нээлттэй шалгалтуудаас сонгоод **нэг удаа** өгнө: fullscreen, таймер,
+  хариулт автоматаар хадгалагдана (refresh хийсэн ч үргэлжилнэ), хугацаа
+  дуусахад автоматаар илгээгдэнэ, оноо шууд гарна.
 
-| Path | Purpose |
-|------|---------|
-| `sdk/` | Browser SDK, bundled to `public/sdk/v1.js` (DevTools, focus loss, fullscreen exits, duplicate tab, fetch/XHR tampering, overlay, multi-monitor, input lockdown) |
-| `lib/policy.ts` | Limits and rules, shared by the SDK and the server |
-| `app/api/v1/events` | Records each signal in `ExamIntegrityEvent` and terminates the `ExamSession` server-side |
-| `app/api/health` | DB connectivity check |
+**Хуурлаас хамгаалалт** (`sdk/` → `/sdk/v1.js`, шийдвэрийг сервер гаргана)
+- Цонх/tab-аас гарах бүр тоологдоно, **3 дахь удаад шууд хасагдана (ban)**.
+- Fullscreen-ээс 3 удаа гарвал хасагдана.
+- DevTools, давхар tab, хуудас/сүлжээний API өөрчлөх → шууд цуцлагдана.
+- Олон дэлгэц → зөвхөн бүртгэнэ.
 
-Camera proctoring (webcam snapshots, ID/face baseline, face matching) stays
-in the main app.
+**Админ** (`/admin`)
+- Google Form шиг шалгалт бэлдэнэ: 2–8 сонголт, зөв хариулт, дараалал холих.
+- Excel (.xlsx), CSV эсвэл Word-оос хуулсан текстээс асуулт импортлоно.
+- Шалгалт бүрийн үр дүн: хэдэн хүн өгсөн, хүн бүрийн оноо, focus алдсан тоо
+  (`2/3`), бусад зөрчил, CSV татах, «Дахин өгүүлэх».
 
-## Authentication
+## Орчны хувьсагч
 
-Session cookies can't be shared between two `*.vercel.app` projects, so the
-main app mints a short-lived JWT per exam at `POST /api/exam/start`
-(HS256, `iss=codequest`, `aud=codequest-anti-cheat`, `sub`=user id,
-`sid`=exam session id, expires 5 min after the exam). The SDK sends it as
-`Authorization: Bearer …`. Both projects share `ANTI_CHEAT_TOKEN_SECRET`.
+| Нэр | Тайлбар |
+|---|---|
+| `DATABASE_URL` | Энэ app-ийн Postgres. Vercel дээр Supabase **Transaction pooler** (6543) |
+| `AUTH_SECRET` | 32+ тэмдэгт. Session cookie болон шалгалтын token-ийг гарын үсэглэнэ |
+| `APP_URL` | `https://fenrir-anticheat.vercel.app` (Google redirect URI-д) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Заавал биш. Байвал «Google-ээр нэвтрэх» гарна |
 
-## Database
-
-`prisma/schema.prisma` is a **read-only mirror**. The main repo owns all
-migrations, including the `ExamIntegrityEvent` table this service writes.
-Never run `prisma migrate` / `prisma db push` here.
-
-## Local development
+## Локалд ажиллуулах
 
 ```bash
-cp .env.example .env      # same DATABASE_URL as the main app
-npm install               # also runs prisma generate
-npm run dev               # http://localhost:3001
+cp .env.example .env            # DATABASE_URL = Session pooler (5432)
+npm install
+npm run db:migrate              # хүснэгтүүдийг үүсгэнэ
+ADMIN_EMAILS="you@example.com" ADMIN_PASSWORD="..." npm run db:seed-admins
+npm run dev                     # http://localhost:3001
 ```
 
-In the main app's `.env` set:
+## Vercel-д deploy хийх
 
-```env
-ANTI_CHEAT_SERVICE_URL="http://localhost:3001"
-ANTI_CHEAT_TOKEN_SECRET="<same value as here>"
+1. Supabase дээр project үүсгээд `npm run db:migrate`, `npm run db:seed-admins`-ийг
+   Session pooler (5432) URL-аар ажиллуулна.
+2. Vercel → энэ repo → Environment Variables: `DATABASE_URL` (Transaction pooler,
+   6543), `AUTH_SECRET`, `APP_URL`, шаардлагатай бол `GOOGLE_*`.
+3. Deploy. `/api/health` → `200`.
+
+### Google OAuth
+
+Google Cloud Console → Google Auth Platform → **Clients → Web application**:
+- Authorized JavaScript origin: `https://fenrir-anticheat.vercel.app`
+- Authorized redirect URI: `https://fenrir-anticheat.vercel.app/api/auth/google/callback`
+
+Audience-ийг **Publish app** болгоно, эс бөгөөс зөвхөн test user-ууд нэвтэрнэ.
+
+## Импортын формат
+
+Excel/CSV — мөр бүр нэг асуулт, сүүлийн нүд нь зөв хариулт (үсэг, дугаар эсвэл текст):
+
+```
+Асуулт | Сонголт А | Сонголт Б | Сонголт В | Зөв хариулт
 ```
 
-## Deploy to Vercel
+Текст:
 
-1. Apply the main repo's migrations to the shared database first
-   (`npx prisma migrate deploy` from the main repo) so `ExamIntegrityEvent`
-   exists.
-2. Push this repo to GitHub → Vercel → **Add New Project** → import it.
-   Framework preset: Next.js. No root-directory or build overrides needed.
-3. Environment variables, added on the import screen before the first
-   deploy: `lib/env.ts` validates them during `next build`, so a build
-   without them fails.
-   - `DATABASE_URL`: the main app's pooled connection string
-   - `ANTI_CHEAT_TOKEN_SECRET`: `openssl rand -base64 48`, the same value in both projects
-   - `ALLOWED_ORIGINS`: the main app's URL, e.g. `https://codequest.vercel.app`
-4. Deploy, then open `https://<this-project>.vercel.app/api/health` and expect `200`.
-5. In the **main** Vercel project set `ANTI_CHEAT_SERVICE_URL` to this
-   project's production URL plus the same `ANTI_CHEAT_TOKEN_SECRET`, then
-   redeploy the main app (the URL is read at build time).
+```
+1. Монгол Улсын нийслэл аль нь вэ?
+А. Дархан
+*Б. Улаанбаатар
+В. Эрдэнэт
+```
 
-Use the production domain: Vercel's deployment protection blocks preview
-URLs from being loaded by other sites.
-
-## Checks
+## Шалгалтууд
 
 ```bash
 npm run lint:check

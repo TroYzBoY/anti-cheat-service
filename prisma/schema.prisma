@@ -1,15 +1,6 @@
-// ─────────────────────────────────────────────────────────────────────────
-// READ-ONLY MIRROR of the main CodeQuest schema (shared Postgres database).
-//
-// The main repo (`online-learning-and-online-exam-anti-cheat`) owns every
-// migration. This file lists only the tables/columns this service touches.
-//
-//   ✔ npm run prisma:generate   (safe — just builds the client)
-//   ✘ prisma migrate / prisma db push   (NEVER — a subset schema would
-//                                         drop every other table)
-//
-// When a mirrored model changes in the main repo, copy the change here.
-// ─────────────────────────────────────────────────────────────────────────
+// Fenrir — standalone proctored exam app. This repo owns its database and
+// every migration (`prisma/migrations`). Apply them with
+// `npm run db:migrate` (prisma migrate deploy).
 
 generator client {
   provider = "prisma-client"
@@ -20,29 +11,103 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id              String        @id @default(cuid())
+  email           String        @unique
+  fullName        String
+  /// Null for accounts that only ever signed in with Google.
+  passwordHash    String?
+  /// Google account id (`sub`) once the user has signed in with Google.
+  googleSub       String?       @unique
+  /// Set when ownership of `email` is proven (Google sign-in, admin seed).
+  /// Self-registered accounts stay unverified: there is no email step.
+  emailVerifiedAt DateTime?
+  /// LEARNER | ADMIN
+  role            String        @default("LEARNER")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  sessions        ExamSession[]
+}
+
+/// Failed password sign-ins per email, to slow down password guessing.
+model LoginThrottle {
+  email       String    @id
+  failures    Int       @default(0)
+  windowStart DateTime  @default(now())
+  lockedUntil DateTime?
+}
+
+/// An exam authored in the admin builder. Learners only see PUBLISHED ones.
+/// Questions are copied into each `ExamSession` when it starts, so editing an
+/// exam never changes an attempt that is in progress or finished.
+model Exam {
+  id               String        @id @default(cuid())
+  title            String
+  description      String        @default("")
+  /// DRAFT (admins only) | PUBLISHED (learners can start) | CLOSED (results only)
+  status           String        @default("DRAFT")
+  durationMinutes  Int           @default(30)
+  passPercent      Int           @default(60)
+  shuffleQuestions Boolean       @default(false)
+  shuffleChoices   Boolean       @default(false)
+  createdById      String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  items            ExamItem[]
+  sessions         ExamSession[]
+
+  @@index([status, createdAt])
+}
+
+/// One multiple-choice question: 2–8 `choices`, `correctIndex` 0-based.
+model ExamItem {
+  id           String   @id @default(cuid())
+  examId       String
+  position     Int
+  prompt       String
+  choices      String[]
+  correctIndex Int
+  exam         Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+
+  @@index([examId, position])
+}
+
+/// A learner's single attempt at an exam (one per learner per exam).
 model ExamSession {
-  id              String               @id
-  userId          String
-  status          String
-  expiresAt       DateTime
-  scorePercent    Int?
-  passed          Boolean?
-  submittedAt     DateTime?
-  updatedAt       DateTime             @updatedAt
-  examAttempt     ExamAttempt?
-  integrityEvents ExamIntegrityEvent[]
+  id                String               @id @default(cuid())
+  examId            String
+  userId            String
+  /// ACTIVE | SUBMITTED | TERMINATED | EXPIRED
+  status            String               @default("ACTIVE")
+  /// PASS | FAIL | BANNED | TERMINATED | EXPIRED — set once the attempt ends.
+  outcome           String?
+  /// The anti-cheat reason when status = TERMINATED (see lib/policy.ts).
+  terminationReason String?
+  startedAt         DateTime             @default(now())
+  expiresAt         DateTime
+  submittedAt       DateTime?
+  passPercent       Int
+  /// What the learner sees: [{ id, prompt, choices }] in session order.
+  questions         Json
+  /// Correct choice index per question, same order. Never sent to the browser.
+  answerKey         Int[]
+  /// Submitted choice index per question; -1 = left unanswered.
+  answers           Int[]                @default([])
+  correctCount      Int?
+  scorePercent      Int?
+  passed            Boolean?
+  updatedAt         DateTime             @updatedAt
+  exam              Exam                 @relation(fields: [examId], references: [id], onDelete: Cascade)
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events            ExamIntegrityEvent[]
+
+  @@unique([examId, userId])
+  @@index([userId])
+  @@index([status])
 }
 
-model ExamAttempt {
-  id           String      @id
-  sessionId    String      @unique
-  submittedAt  DateTime?
-  outcome      String?
-  scorePercent Int?
-  session      ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-}
-
-/// One row per anti-cheat signal reported by the browser SDK.
+/// One row per anti-cheat signal reported by the browser SDK. The server
+/// counts rows per (session, type) to decide terminations.
 model ExamIntegrityEvent {
   id        String      @id @default(cuid())
   sessionId String
@@ -54,18 +119,4 @@ model ExamIntegrityEvent {
 
   @@index([sessionId, type])
   @@index([sessionId, createdAt])
-}
-
-model AuditLog {
-  id        String   @id @default(cuid())
-  event     String
-  actorId   String?
-  targetId  String?
-  metadata  Json?
-  createdAt DateTime @default(now())
-
-  @@index([event, createdAt])
-  @@index([actorId, createdAt])
-  @@index([targetId, createdAt])
-  @@index([createdAt])
 }

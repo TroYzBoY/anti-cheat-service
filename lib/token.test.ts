@@ -1,29 +1,29 @@
 import { SignJWT } from "jose";
 import { describe, expect, it } from "vitest";
 
+import { createSessionToken } from "./session";
 import {
   ANTI_CHEAT_TOKEN_AUDIENCE,
   ANTI_CHEAT_TOKEN_ISSUER,
+  createAntiCheatToken,
   readBearerToken,
   verifyAntiCheatToken,
 } from "./token";
 
-const secret = new TextEncoder().encode(process.env.ANTI_CHEAT_TOKEN_SECRET);
+const secret = new TextEncoder().encode(process.env.AUTH_SECRET);
 
 function sign({
-  sid = "session-123",
   issuer = ANTI_CHEAT_TOKEN_ISSUER,
   audience = ANTI_CHEAT_TOKEN_AUDIENCE,
   expiresIn = "10m",
   key = secret,
 }: {
-  sid?: string;
   issuer?: string;
   audience?: string;
   expiresIn?: string;
   key?: Uint8Array;
 } = {}) {
-  return new SignJWT({ sid })
+  return new SignJWT({ sid: "session-123" })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuer(issuer)
     .setAudience(audience)
@@ -33,9 +33,14 @@ function sign({
     .sign(key);
 }
 
-describe("verifyAntiCheatToken", () => {
-  it("accepts a token minted the way the main app does", async () => {
-    await expect(verifyAntiCheatToken(await sign())).resolves.toEqual({
+describe("anti-cheat token", () => {
+  it("round-trips a token minted for an exam session", async () => {
+    const token = await createAntiCheatToken({
+      userId: "user-1",
+      sessionId: "session-123",
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await expect(verifyAntiCheatToken(token)).resolves.toEqual({
       userId: "user-1",
       sessionId: "session-123",
     });
@@ -45,12 +50,15 @@ describe("verifyAntiCheatToken", () => {
     await expect(verifyAntiCheatToken(await sign({ audience: "other" }))).resolves.toBeNull();
     await expect(verifyAntiCheatToken(await sign({ issuer: "other" }))).resolves.toBeNull();
     await expect(
-      verifyAntiCheatToken(
-        await sign({ key: new TextEncoder().encode("x".repeat(48)) }),
-      ),
+      verifyAntiCheatToken(await sign({ key: new TextEncoder().encode("x".repeat(48)) })),
     ).resolves.toBeNull();
     await expect(verifyAntiCheatToken(await sign({ expiresIn: "-1m" }))).resolves.toBeNull();
     await expect(verifyAntiCheatToken("not-a-jwt")).resolves.toBeNull();
+  });
+
+  it("does not accept a session cookie token", async () => {
+    const sessionToken = await createSessionToken({ id: "user-1", role: "ADMIN" });
+    await expect(verifyAntiCheatToken(sessionToken)).resolves.toBeNull();
   });
 });
 

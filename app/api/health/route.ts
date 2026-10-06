@@ -17,7 +17,7 @@ export async function GET() {
   return NextResponse.json(
     {
       status: database.ok ? "ok" : "down",
-      service: "anti-cheat",
+      service: "fenrir",
       timestamp: new Date().toISOString(),
       checks: { database },
     },

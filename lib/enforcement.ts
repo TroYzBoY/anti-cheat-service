@@ -12,7 +12,7 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * Hard cap per exam session so a misbehaving (or malicious) client can't
- * flood the shared database. A real session produces a few dozen at most.
+ * flood the database. A real session produces a few dozen at most.
  */
 export const MAX_EVENTS_PER_SESSION = 300;
 
@@ -100,59 +100,26 @@ async function terminateSession({
   sessionId: string;
   reason: TerminationReason;
 }) {
-  const now = new Date();
-  const ended = await prisma.$transaction(async (tx) => {
-    // Guarded on ACTIVE so concurrent events can't overwrite each other's
-    // outcome or clobber a submission that landed first.
-    const { count } = await tx.examSession.updateMany({
-      where: { id: sessionId, status: "ACTIVE" },
-      data: {
-        status: "TERMINATED",
-        scorePercent: 0,
-        passed: false,
-        submittedAt: now,
-      },
-    });
-    if (count === 0) return false;
-    await tx.examAttempt.updateMany({
-      where: { sessionId },
-      data: {
-        outcome: outcomeForReason(reason),
-        submittedAt: now,
-        scorePercent: 0,
-      },
-    });
-    return true;
+  // Guarded on ACTIVE so concurrent events can't overwrite each other's
+  // outcome or clobber a submission that landed first.
+  const { count } = await prisma.examSession.updateMany({
+    where: { id: sessionId, status: "ACTIVE" },
+    data: {
+      status: "TERMINATED",
+      outcome: outcomeForReason(reason),
+      terminationReason: reason,
+      scorePercent: 0,
+      passed: false,
+      submittedAt: new Date(),
+    },
   });
 
-  if (ended) {
-    logEvent("exam_terminated", {
-      userId,
-      sessionId,
-      reason,
-      source: "anti-cheat-service",
-    });
+  if (count > 0) {
+    logEvent("exam_terminated", { userId, sessionId, reason });
   }
 }
 
-/**
- * Mirrors the main app's `logServerEvent`: one JSONL line on stdout plus a
- * best-effort `AuditLog` row, so `/admin/audit` keeps showing terminations.
- */
-function logEvent(event: string, fields: Record<string, unknown>) {
+/** One JSONL line on stdout (Vercel keeps it in the function logs). */
+export function logEvent(event: string, fields: Record<string, unknown>) {
   console.log(JSON.stringify({ t: new Date().toISOString(), level: "info", event, ...fields }));
-
-  const targetId = typeof fields.userId === "string" ? fields.userId : null;
-  void prisma.auditLog
-    .create({
-      data: {
-        event,
-        actorId: null,
-        targetId,
-        metadata: JSON.parse(JSON.stringify(fields)) as Prisma.InputJsonValue,
-      },
-    })
-    .catch(() => {
-      // Best-effort; the stdout line above is the durable fallback.
-    });
 }

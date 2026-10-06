@@ -4,15 +4,10 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // The SDK is a classic <script> loaded cross-origin by the exam page.
-        // CORP must allow that, and a short cache keeps policy fixes rolling
-        // out within minutes of a deploy.
+        // The exam page loads the SDK from this app. A short cache keeps
+        // policy fixes rolling out within minutes of a deploy.
         source: "/sdk/:path*",
-        headers: [
-          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
-          { key: "Access-Control-Allow-Origin", value: "*" },
-          { key: "Cache-Control", value: "public, max-age=300, must-revalidate" },
-        ],
+        headers: [{ key: "Cache-Control", value: "public, max-age=300, must-revalidate" }],
       },
       {
         source: "/:path*",
