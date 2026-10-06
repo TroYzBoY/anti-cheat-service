@@ -33,8 +33,9 @@
 | `AUTH_SECRET` | 32+ тэмдэгт. Session cookie болон шалгалтын token-ийг гарын үсэглэнэ |
 | `APP_URL` | `https://fenrir-anticheat.vercel.app` (Google redirect URI-д) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Заавал биш. Байвал «Google-ээр нэвтрэх» гарна |
-| `RESEND_API_KEY` | Баталгаажуулах/сэргээх кодыг Resend-ээр илгээнэ. Production-д заавал |
-| `EMAIL_FROM` | Илгээгч, Resend дээр баталгаажсан домэйн дээр: `Fenrir <no-reply@таны-домэйн>` |
+| `SMTP_USER`, `SMTP_PASS` | Кодыг Gmail-ээр илгээнэ: Gmail хаяг + Google App Password (домэйн шаардлагагүй) |
+| `RESEND_API_KEY` | Эсвэл Resend-ээр (домэйн баталгаажуулсны дараа). SMTP байвал SMTP-г ашиглана |
+| `EMAIL_FROM` | Илгээгч. Анхдагч нь `SMTP_USER`; Resend-д таны домэйн дээрх хаяг |
 
 ## Локалд ажиллуулах
 
@@ -62,7 +63,16 @@ Google Cloud Console → Google Auth Platform → **Clients → Web application*
 
 Audience-ийг **Publish app** болгоно, эс бөгөөс зөвхөн test user-ууд нэвтэрнэ.
 
-### Resend (имэйл код)
+### Имэйл код: Gmail (домэйнгүй)
+
+1. Google Account → **Security → 2-Step Verification**-ийг асаана.
+2. https://myaccount.google.com/apppasswords → нэр `Fenrir` → **Create** →
+   16 тэмдэгттэй нууц үг гарна.
+3. Vercel: `SMTP_USER` = Gmail хаяг, `SMTP_PASS` = тэр 16 тэмдэгт → Redeploy.
+
+Gmail өдөрт ~500 имэйл илгээнэ; эхэндээ spam хавтас руу орж магадгүй.
+
+### Имэйл код: Resend (домэйнтэй бол)
 
 1. resend.com → **API Keys → Create API Key** (Sending access) → `RESEND_API_KEY`.
 2. **Domains → Add Domain** → өөрийн домэйноо нэмж DNS бичлэгүүдийг тавина →
