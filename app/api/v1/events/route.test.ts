@@ -108,6 +108,16 @@ describe("POST /api/v1/events", () => {
     );
   });
 
+  it("bans the attempt on Print Screen", async () => {
+    const json = await (await post({ type: "screenshot" })).json();
+    expect(json).toMatchObject({ active: false, terminated: "screenshot" });
+    expect(updateSessionsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ outcome: "BANNED", terminationReason: "screenshot" }),
+      }),
+    );
+  });
+
   it("reports an already-finished session without recording", async () => {
     findSessionMock.mockResolvedValue({ userId: "user-1", status: "SUBMITTED" });
     const json = await (await post({ type: "focus-loss" })).json();

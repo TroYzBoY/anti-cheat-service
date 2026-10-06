@@ -20,6 +20,7 @@ export const INTEGRITY_EVENT_TYPES = [
   "fetch-mitm",
   "overlay-tampered",
   "multi-monitor",
+  "screenshot",
 ] as const;
 
 export type IntegrityEventType = (typeof INTEGRITY_EVENT_TYPES)[number];
@@ -31,6 +32,7 @@ export const TERMINATION_REASONS = [
   "duplicate-tab",
   "fetch-mitm",
   "overlay-tampered",
+  "screenshot",
 ] as const;
 
 export type TerminationReason = (typeof TERMINATION_REASONS)[number];
@@ -59,6 +61,9 @@ export const EVENT_RULES: Record<IntegrityEventType, EventRule> = {
   "fetch-mitm": { kind: "terminate", reason: "fetch-mitm" },
   "overlay-tampered": { kind: "terminate", reason: "overlay-tampered" },
   "multi-monitor": { kind: "log" },
+  // The Print Screen key. Pages can't stop the OS from capturing the screen,
+  // so pressing it is treated as an attempt to copy the questions.
+  screenshot: { kind: "terminate", reason: "screenshot" },
 };
 
 /**
@@ -72,6 +77,7 @@ const BAN_REASONS: ReadonlySet<TerminationReason> = new Set([
   "duplicate-tab",
   "fetch-mitm",
   "overlay-tampered",
+  "screenshot",
 ]);
 
 export function outcomeForReason(

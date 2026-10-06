@@ -279,11 +279,26 @@ function keyboardLock(): KeyboardLock | undefined {
  * Keyboard Lock hands those to the page too, so they get swallowed as well;
  * leaving fullscreen then takes holding Esc, which counts as a violation.
  * Ctrl+Alt+Del and other OS-level combinations can never be blocked.
+ *
+ * Print Screen can't be stopped either — Windows takes the capture before the
+ * page hears the key — so it is reported through `onPrintScreen`, and the
+ * clipboard is overwritten to drop an image the capture may have put there.
  */
-export function installInputBlockers(): () => void {
+export function installInputBlockers({
+  onPrintScreen,
+}: { onPrintScreen?: () => void } = {}): () => void {
+  let printScreenReported = false;
   const swallowKey = (e: KeyboardEvent) => {
     e.preventDefault();
     e.stopImmediatePropagation();
+    if (e.key === "PrintScreen" || e.code === "PrintScreen") {
+      navigator.clipboard?.writeText("").catch(() => undefined);
+      // keydown and keyup may both arrive (Windows often sends only keyup).
+      if (!printScreenReported) {
+        printScreenReported = true;
+        onPrintScreen?.();
+      }
+    }
   };
   const onWheel = (e: WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {

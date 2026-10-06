@@ -30,6 +30,7 @@ const REASON_LABELS: Record<string, string> = {
   "duplicate-tab": "Давхар tab нээсэн",
   "fetch-mitm": "Сүлжээний API өөрчилсөн",
   "overlay-tampered": "Хуудсанд overlay/өөрчлөлт илэрсэн",
+  screenshot: "Print Screen дарсан (дэлгэцийн зураг)",
 };
 
 export default async function SessionDetailPage({

@@ -39,6 +39,7 @@ export const VIOLATION_LABELS: Record<string, string> = {
   "fetch-mitm": "Сүлжээ өөрчилсөн",
   "overlay-tampered": "Хуудас өөрчилсөн",
   "multi-monitor": "Олон дэлгэц",
+  screenshot: "Print Screen",
 };
 
 /** Violation counts per session, keyed by event type. */

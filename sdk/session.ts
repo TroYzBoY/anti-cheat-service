@@ -40,6 +40,7 @@ const TERMINATION_MESSAGES: Record<Termination["reason"], string> = {
   "fetch-mitm": "Network API tampered with. Exam cancelled.",
   "overlay-tampered":
     "Page tampered with (overlay or filter detected). Exam cancelled.",
+  screenshot: "Screenshot (Print Screen) attempt detected. Exam cancelled.",
   "session-terminated": "This exam session has already been terminated.",
 };
 
@@ -314,7 +315,10 @@ export function createSession(
     focusAway = false;
     releasePointerLock();
     teardowns = [
-      installInputBlockers(),
+      installInputBlockers({
+        onPrintScreen: () =>
+          fatal("screenshot", "screenshot", TERMINATION_MESSAGES.screenshot),
+      }),
       watchFocus(),
       watchFullscreenExits(),
       watchWindowSize(),

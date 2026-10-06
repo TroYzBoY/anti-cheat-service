@@ -23,6 +23,7 @@ describe("anti-cheat policy", () => {
     expect(evaluateEvent("duplicate-tab", 1)).toBe("duplicate-tab");
     expect(evaluateEvent("fetch-mitm", 1)).toBe("fetch-mitm");
     expect(evaluateEvent("overlay-tampered", 1)).toBe("overlay-tampered");
+    expect(evaluateEvent("screenshot", 1)).toBe("screenshot");
   });
 
   it("only terminates counted signals at the limit", () => {
@@ -44,6 +45,7 @@ describe("anti-cheat policy", () => {
     expect(outcomeForReason("devtools")).toBe("TERMINATED");
     expect(outcomeForReason("focus-loss-limit")).toBe("BANNED");
     expect(outcomeForReason("duplicate-tab")).toBe("BANNED");
+    expect(outcomeForReason("screenshot")).toBe("BANNED");
   });
 
   it("recognises termination reasons", () => {

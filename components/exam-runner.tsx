@@ -112,6 +112,8 @@ function terminationText(
     case "fetch-mitm":
     case "overlay-tampered":
       return "Хуудсанд гадны өөрчлөлт (extension гэх мэт) илэрсэн тул шалгалт цуцлагдлаа.";
+    case "screenshot":
+      return "Дэлгэцийн зураг (Print Screen) авах оролдлого илэрсэн тул шалгалтаас хасагдлаа (ban).";
     case "session-terminated":
       return "Энэ шалгалт аль хэдийн дууссан эсвэл цуцлагдсан байна.";
   }
@@ -498,6 +500,10 @@ export function ExamRunner({
               <li>
                 Шалгалтын үеэр <strong>гарын товчлуур ажиллахгүй</strong> — хариултаа
                 хулганаар сонгоно.
+              </li>
+              <li>
+                <strong>Print Screen</strong> дарах эсвэл дэлгэцийн зураг авах оролдлого
+                илэрвэл шууд хасагдана (ban).
               </li>
               <li>
                 Өөр цонх, tab руу шилжих эсвэл browser-оос гарах бүр тоологдоно.{" "}
