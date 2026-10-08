@@ -82,23 +82,35 @@ Gmail өдөрт ~500 имэйл илгээнэ; эхэндээ spam хавта�
 
 Локалд `RESEND_API_KEY`-гүй ажиллуулбал имэйлийг серверийн консол руу хэвлэнэ.
 
-### Safe Exam Browser (SEB) шаардах
+### Safe Exam Browser (SEB)
 
-Шалгалтын тохиргоонд «Safe Exam Browser (SEB) шаардах»-ыг асаавал тэр шалгалтыг
-зөвхөн SEB-ээр эхлүүлж, илгээнэ (сервер SEB-ийн Config Key hash-ийг шалгана).
-SEB нь бусад програм, overlay AI, дэлгэц бичих, VM, remote desktop-ийг хаадаг.
+Бүх шалгалтыг зөвхөн SEB-ээр эхлүүлж, илгээнэ: сервер SEB-ийн Config Key
+hash-ийг шалгана. Энгийн browser-т «Эхлүүлэх» товчны оронд SEB суулгах заавар,
+шалгалтын .seb файлыг татах товч гарна.
 
-1. https://safeexambrowser.org-оос **SEB Config Tool**-ийг ажиллуулна (Windows).
-2. **General → Start URL** = шалгалт засах хуудсанд харагдах хаяг
-   (`https://fenrir-anticheat.vercel.app/exams/<id>`).
-3. **Security → Kiosk mode: Create new desktop**; **Applications → Prohibited
-   processes**-д ChatGPT, Discord, AnyDesk, TeamViewer, OBS гэх мэтийг нэмнэ.
-4. **Exam → Use Browser Exam Key and Configuration Key** асаагаад гарсан
-   **Configuration Key**-г Fenrir-ийн шалгалтын «Config Key» талбарт хуулна.
-5. .seb файлаа хадгалаад мөн тэнд байршуулна — суралцагчид шалгалтын хуудаснаас
-   татаж нээнэ. Тохиргоо өөрчлөгдвөл Config Key ч өөрчлөгдөнө.
+.seb файлыг апп өөрөө үүсгэдэг (`lib/seb-config.ts`), Config Key-г ч өөрөө
+тооцоолно. Тиймээс SEB Config Tool, key хуулах шаардлагагүй. Тохиргоо:
 
-Суралцагчдад SEB суулгах шаардлагатай (Windows, macOS, iPad).
+- Kiosk: SEB өөрийн desktop дээр ажиллана. Бусад програмын цонх, overlay
+  харагдахгүй. VM, remote desktop, дэлгэцийн бичлэг, Print Screen, олон дэлгэц
+  хориотой.
+- Хориотой програм: бусад browser (Google Meet, ChatGPT вэб), WhatsApp,
+  Messenger зэргийг SEB эхлэхээс өмнө хаалгана. ChatGPT, Claude, Copilot,
+  Perplexity, Cluely, Game Bar, ShareX зэргийг асуулгүй хаана. SEB for Windows
+  өөрөө Discord, Zoom, Teams, Skype, Slack, Telegram, AnyDesk, TeamViewer, OBS,
+  Remote Desktop гэх мэтийг хаадаг. Шалгалтын үеэр эдгээрийн аль нэг нээгдвэл
+  SEB тэр даруй хаана.
+- SEB-ийн taskbar нуугдсан. Гарахдаа хуудсан дээрх «SEB-ээс гарах» холбоосыг
+  (`/seb-quit`) дарна.
+- Шалгалтын цонх focus-оо нэг удаа алдахад (өөр програм, цонх гарч ирэх) л
+  шалгалт шууд хасагдана (ban).
+
+Админ өөрийн .seb файлыг байршуулж, Config Key-г нь оруулж болно. Тэгвэл
+суралцагчид тэр файлыг татна (generated файл ч мөн хүчинтэй хэвээр).
+
+Суралцагчдад SEB суулгах шаардлагатай (Windows, macOS, iPad). SEB дотор Google
+нэвтрэлт ажиллахгүй байж магадгүй. Тэр үед «Нууц үгээ мартсан»-аар нууц үг
+тохируулна.
 
 ## Импортын формат
 

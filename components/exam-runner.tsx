@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { SebQuitLink, sebProof, useInSeb } from "@/components/seb";
 import { loadAntiCheatSdk } from "@/lib/anti-cheat-sdk";
 import type { SessionQuestion } from "@/lib/exam-build";
 import { CHOICE_LABELS } from "@/lib/exam-forms";
+import { sebConfigPath } from "@/lib/seb-urls";
 import type {
   AntiCheatSdk,
   AntiCheatSession,
@@ -15,42 +17,6 @@ import type {
 } from "@/sdk/types";
 
 type AntiCheatTerminationReason = Termination["reason"];
-
-/** Safe Exam Browser's JavaScript API (SEB 3.x on Windows, macOS, iOS). */
-type SebApi = {
-  security?: { configKey?: string; updateKeys?: (callback: () => void) => void };
-};
-
-function sebApi(): SebApi | undefined {
-  return (window as Window & { SafeExamBrowser?: SebApi }).SafeExamBrowser;
-}
-
-function detectSeb() {
-  return Boolean(sebApi()) || /\bSEB\//.test(navigator.userAgent);
-}
-
-const noSubscribe = () => () => undefined;
-
-/**
- * What the server checks to confirm Safe Exam Browser: SEB's Config Key hash
- * for this page URL. `updateKeys` refreshes it after client-side navigation.
- */
-async function sebProof(): Promise<{ configKeyHash: string; url: string } | null> {
-  const security = sebApi()?.security;
-  if (!security) return null;
-  if (security.updateKeys) {
-    await new Promise<void>((resolve) => {
-      const timeout = window.setTimeout(resolve, 2000);
-      security.updateKeys!(() => {
-        window.clearTimeout(timeout);
-        resolve();
-      });
-    });
-  }
-  return typeof security.configKey === "string"
-    ? { configKeyHash: security.configKey, url: window.location.href.split("#")[0] }
-    : null;
-}
 
 export type ExamSummary = {
   id: string;
@@ -138,7 +104,7 @@ function terminationText(
 ) {
   switch (reason) {
     case "focus-loss-limit":
-      return `Та шалгалтын цонхноос ${limits.focus} удаа гарсан тул шалгалтаас хасагдлаа (ban).`;
+      return "Шалгалтын цонхноос гарсан эсвэл өөр програм, цонх гарч ирсэн тул шалгалтаас хасагдлаа (ban).";
     case "fullscreen-exit-limit":
       return `Fullscreen горимоос ${limits.fullscreen} удаа гарсан тул шалгалтаас хасагдлаа (ban).`;
     case "devtools":
@@ -157,18 +123,15 @@ function terminationText(
 
 export function ExamRunner({
   exam,
-  seb,
   resumable,
 }: {
   exam: ExamSummary;
-  /** Safe Exam Browser requirement for this exam. */
-  seb: { required: boolean; hasConfigFile: boolean };
   /** The learner already has a running attempt (e.g. after a reload). */
   resumable: boolean;
 }) {
   const router = useRouter();
-  // False on the server; read from the browser after hydration.
-  const inSeb = useSyncExternalStore(noSubscribe, detectSeb, () => false);
+  // Every exam is taken in Safe Exam Browser; other browsers get instructions.
+  const inSeb = useInSeb();
   const [sdkState, setSdkState] = useState<SdkState>({ status: "loading" });
   const [loadAttempt, setLoadAttempt] = useState(0);
 
@@ -529,9 +492,12 @@ export function ExamRunner({
   if (phase === "intro" || phase === "starting") {
     return (
       <div className="mx-auto max-w-3xl px-4 py-8 text-[#ecedf6]">
-        <Link href="/exams" className="text-sm text-white/55 hover:text-white">
-          ← Шалгалтын жагсаалт
-        </Link>
+        <div className="flex items-center justify-between gap-3">
+          <Link href="/exams" className="text-sm text-white/55 hover:text-white">
+            ← Шалгалтын жагсаалт
+          </Link>
+          <SebQuitLink className="text-sm text-white/55 hover:text-white" />
+        </div>
         <div className="mt-4 rounded-3xl border border-white/10 bg-white/[0.03] p-6 md:p-8">
           <h1 className="text-3xl font-bold text-white">{exam.title}</h1>
           {exam.description ? (
@@ -546,12 +512,11 @@ export function ExamRunner({
           <div className="mt-6 rounded-2xl border border-amber-400/25 bg-amber-500/[0.07] p-5">
             <p className="font-bold text-amber-200">Шалгалтын дүрэм</p>
             <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-white/80">
-              {seb.required ? (
-                <li>
-                  Энэ шалгалтыг зөвхөн <strong>Safe Exam Browser (SEB)</strong>-ээр өгнө.
-                </li>
-              ) : null}
-              <li>Шалгалт fullscreen горимд явагдана.</li>
+              <li>
+                Шалгалтыг зөвхөн <strong>Safe Exam Browser (SEB)</strong>-ээр өгнө. SEB
+                эхлэхдээ бусад browser (Google Meet гэх мэт), ChatGPT зэрэг AI, Discord,
+                Zoom, Teams, remote desktop, дэлгэц бичигч програмуудыг хаалгана.
+              </li>
               <li>
                 Шалгалтын үеэр <strong>гарын товчлуур ажиллахгүй</strong> — хариултаа
                 хулганаар сонгоно.
@@ -561,12 +526,11 @@ export function ExamRunner({
                 илэрвэл шууд хасагдана (ban).
               </li>
               <li>
-                Өөр цонх, tab руу шилжих эсвэл browser-оос гарах бүр тоологдоно.{" "}
                 <strong className="text-amber-200">
-                  {limits.focus} удаа гарвал шууд хасагдана (ban).
+                  Шалгалтын цонхноос гарах, эсвэл өөр програм, цонх гарч ирвэл шууд
+                  хасагдана (ban).
                 </strong>
               </li>
-              <li>Fullscreen-ээс {limits.fullscreen} удаа гарвал мөн хасагдана.</li>
               <li>
                 Developer tools нээх, өөр tab-д давхар нээх, хуулах/буулгах хориотой —
                 илэрвэл шалгалт шууд цуцлагдана.
@@ -600,7 +564,7 @@ export function ExamRunner({
             </p>
           ) : null}
 
-          {seb.required && !inSeb ? (
+          {!inSeb ? (
             <div className="mt-6 rounded-2xl border border-violet-400/30 bg-violet-500/[0.08] p-5 text-sm text-white/85">
               <p className="font-bold text-white">Safe Exam Browser шаардлагатай</p>
               <ol className="mt-3 list-decimal space-y-1.5 pl-5">
@@ -617,20 +581,20 @@ export function ExamRunner({
                   сайтаас татаж суулгана (Windows, macOS, iPad).
                 </li>
                 <li>
-                  {seb.hasConfigFile
-                    ? "Доорх товчоор шалгалтын тохиргоог татаж нээнэ — SEB энэ шалгалтыг шууд нээнэ."
-                    : "Админаас авсан .seb тохиргооны файлыг нээнэ — SEB энэ шалгалтыг шууд нээнэ."}
+                  Доорх товчоор шалгалтын тохиргоог татаж нээнэ — SEB энэ шалгалтыг шууд
+                  нээнэ.
                 </li>
-                <li>SEB дотор дахин нэвтэрч, шалгалтаа эхлүүлнэ.</li>
+                <li>
+                  SEB дотор дахин нэвтэрч, шалгалтаа эхлүүлнэ. Google-ээр нэвтэрч чадахгүй
+                  бол «Нууц үгээ мартсан»-аар нууц үг тохируулаад түүгээр нэвтэрнэ.
+                </li>
               </ol>
-              {seb.hasConfigFile ? (
-                <a
-                  href={`/exams/${exam.id}/seb`}
-                  className="mt-4 inline-flex rounded-xl bg-violet-600 px-4 py-2.5 font-bold text-white hover:bg-violet-500"
-                >
-                  ↓ SEB тохиргоо татах (.seb)
-                </a>
-              ) : null}
+              <a
+                href={sebConfigPath(exam.id)}
+                className="mt-4 inline-flex rounded-xl bg-violet-600 px-4 py-2.5 font-bold text-white hover:bg-violet-500"
+              >
+                ↓ SEB тохиргоо татах (.seb)
+              </a>
             </div>
           ) : (
             <>
@@ -860,7 +824,7 @@ function CenteredCard({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Shown once the attempt is over: leave fullscreen, then go back to the list. */
+/** Shown once the attempt is over: leave fullscreen or SEB, or go back to the list. */
 function FinishedActions({ inFullscreen }: { inFullscreen: boolean }) {
   return (
     <div className="mt-6 flex flex-wrap gap-2">
@@ -873,6 +837,7 @@ function FinishedActions({ inFullscreen }: { inFullscreen: boolean }) {
           ⤡ Fullscreen-ээс гарах
         </button>
       ) : null}
+      <SebQuitLink className="inline-flex rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-500" />
       <BackLink />
     </div>
   );

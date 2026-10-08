@@ -77,17 +77,17 @@ describe("POST /api/v1/events", () => {
     expect((await post({ type: "focus-loss" })).status).toBe(403);
   });
 
-  it("records a focus loss below the limit without terminating", async () => {
+  it("records a fullscreen exit below the limit without terminating", async () => {
     countEventsMock.mockResolvedValueOnce(0).mockResolvedValueOnce(2);
-    const json = await (await post({ type: "focus-loss", clientCount: 2 })).json();
+    const json = await (await post({ type: "fullscreen-exit", clientCount: 2 })).json();
     expect(json).toMatchObject({ ok: true, active: true, count: 2, limit: 3, terminated: null });
     expect(createEventMock).toHaveBeenCalledOnce();
     expect(updateSessionsMock).not.toHaveBeenCalled();
   });
 
-  it("bans the attempt on the third focus loss", async () => {
-    countEventsMock.mockResolvedValueOnce(2).mockResolvedValueOnce(3);
-    const json = await (await post({ type: "focus-loss", clientCount: 3 })).json();
+  it("bans the attempt on the first focus loss", async () => {
+    countEventsMock.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+    const json = await (await post({ type: "focus-loss", clientCount: 1 })).json();
     expect(json).toMatchObject({ active: false, status: "TERMINATED", terminated: "focus-loss-limit" });
     expect(updateSessionsMock).toHaveBeenCalledWith({
       where: { id: "session-1", status: "ACTIVE" },

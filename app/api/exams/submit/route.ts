@@ -5,10 +5,12 @@ import { getUserFromRequest } from "@/lib/auth";
 import { logEvent } from "@/lib/enforcement";
 import { isDatabaseUnavailableError } from "@/lib/errors";
 import { gradeAnswers, UNANSWERED } from "@/lib/exam-build";
+import { appOrigin } from "@/lib/env";
 import { MAX_CHOICES } from "@/lib/exam-forms";
 import { isSameOrigin, jsonError, jsonSuccess } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { hasValidSebProof } from "@/lib/seb";
+import { examSebConfigKeys } from "@/lib/seb-config";
 
 export const dynamic = "force-dynamic";
 
@@ -44,19 +46,17 @@ export async function POST(request: NextRequest) {
         expiresAt: true,
         passPercent: true,
         answerKey: true,
-        exam: { select: { requireSeb: true, sebConfigKeys: true } },
+        exam: { select: { sebConfigKeys: true } },
       },
     });
     if (!session) return jsonError("Шалгалт олдсонгүй.", 404);
     if (session.userId !== user.id) return jsonError("Энэ шалгалт өөр хүнийх байна.", 403);
-    if (
-      session.exam.requireSeb &&
-      !hasValidSebProof({
-        configKeys: session.exam.sebConfigKeys,
-        request,
-        proof: parsed.data.seb,
-      })
-    ) {
+    const configKeys = examSebConfigKeys(
+      appOrigin(request.url),
+      session.examId,
+      session.exam.sebConfigKeys,
+    );
+    if (!hasValidSebProof({ configKeys, request, proof: parsed.data.seb })) {
       return jsonError("Энэ шалгалтыг зөвхөн Safe Exam Browser-оор өгнө.", 403, {
         code: "SEB_REQUIRED",
       });

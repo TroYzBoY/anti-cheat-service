@@ -1,12 +1,17 @@
 import type { NextRequest } from "next/server";
 
 import { getUserFromRequest } from "@/lib/auth";
+import { appOrigin } from "@/lib/env";
 import { jsonError } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { examSebSettings, sebConfigFile } from "@/lib/seb-config";
 
 export const dynamic = "force-dynamic";
 
-/** The exam's .seb file; opening it starts Safe Exam Browser on the exam. */
+/**
+ * The exam's .seb file; opening it starts Safe Exam Browser on the exam. An
+ * admin's own uploaded file wins over the generated one.
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ examId: string }> },
@@ -19,11 +24,14 @@ export async function GET(
     where: { id: examId },
     select: { status: true, sebConfigFile: true },
   });
-  if (!exam?.sebConfigFile || (exam.status !== "PUBLISHED" && user.role !== "ADMIN")) {
-    return jsonError("SEB тохиргооны файл олдсонгүй.", 404);
+  if (!exam || (exam.status !== "PUBLISHED" && user.role !== "ADMIN")) {
+    return jsonError("Шалгалт олдсонгүй.", 404);
   }
 
-  return new Response(Buffer.from(exam.sebConfigFile), {
+  const file = exam.sebConfigFile
+    ? Buffer.from(exam.sebConfigFile)
+    : sebConfigFile(examSebSettings(appOrigin(request.url), examId));
+  return new Response(file, {
     headers: {
       "Content-Type": "application/seb",
       "Content-Disposition": `attachment; filename="fenrir-${examId}.seb"`,

@@ -4,12 +4,14 @@ import type { NextRequest } from "next/server";
 
 import { getUserFromRequest } from "@/lib/auth";
 import { logEvent } from "@/lib/enforcement";
+import { appOrigin } from "@/lib/env";
 import { isDatabaseUnavailableError } from "@/lib/errors";
 import { buildExamSession, type SessionQuestion } from "@/lib/exam-build";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { isSameOrigin, jsonError, jsonSuccess } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
 import { hasValidSebProof, type SebProof } from "@/lib/seb";
+import { examSebConfigKeys } from "@/lib/seb-config";
 import { createAntiCheatToken } from "@/lib/token";
 
 export const dynamic = "force-dynamic";
@@ -45,11 +47,10 @@ export async function POST(
       return jsonError("Шалгалт олдсонгүй эсвэл хаагдсан байна.", 404);
     }
 
+    // Every exam is taken in Safe Exam Browser.
     const body = (await request.json().catch(() => null)) as { seb?: SebProof } | null;
-    if (
-      exam.requireSeb &&
-      !hasValidSebProof({ configKeys: exam.sebConfigKeys, request, proof: body?.seb })
-    ) {
+    const configKeys = examSebConfigKeys(appOrigin(request.url), examId, exam.sebConfigKeys);
+    if (!hasValidSebProof({ configKeys, request, proof: body?.seb })) {
       return jsonError("Энэ шалгалтыг зөвхөн Safe Exam Browser-оор өгнө.", 403, {
         code: "SEB_REQUIRED",
       });

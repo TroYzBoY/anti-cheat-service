@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { SebQuitLink } from "@/components/seb";
+
 /** `/exams/<id>` is the exam itself: it has its own header and goes fullscreen. */
 const RUNNER_ROUTE = /^\/exams\/[^/]+$/;
 
@@ -54,19 +56,22 @@ export function AppHeader({
             );
           })}
         </nav>
-        {user ? (
-          <div className="ml-auto flex items-center gap-3">
-            <span className="hidden truncate text-sm text-white/60 sm:inline">{user.fullName}</span>
-            <button
-              type="button"
-              onClick={() => void signOut()}
-              disabled={signingOut}
-              className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-white/80 hover:bg-white/[0.06] disabled:opacity-50"
-            >
-              Гарах
-            </button>
-          </div>
-        ) : null}
+        <div className="ml-auto flex items-center gap-3">
+          <SebQuitLink className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-white/80 hover:bg-white/[0.06]" />
+          {user ? (
+            <>
+              <span className="hidden truncate text-sm text-white/60 sm:inline">{user.fullName}</span>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                disabled={signingOut}
+                className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-white/80 hover:bg-white/[0.06] disabled:opacity-50"
+              >
+                Гарах
+              </button>
+            </>
+          ) : null}
+        </div>
       </div>
     </header>
   );

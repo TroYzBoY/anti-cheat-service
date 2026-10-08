@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ExamRunner } from "@/components/exam-runner";
+import { SebQuitLink } from "@/components/seb";
 import { requireUser } from "@/lib/auth";
 import { describeAttempt } from "@/lib/exam-forms";
 import { prisma } from "@/lib/prisma";
@@ -34,8 +35,6 @@ export default async function TakeExamPage({
       status: true,
       durationMinutes: true,
       passPercent: true,
-      requireSeb: true,
-      sebConfigFileName: true,
       _count: { select: { items: true } },
       sessions: {
         where: { userId: user.id },
@@ -74,12 +73,15 @@ export default async function TakeExamPage({
           <p className="mt-4 text-sm text-white/55">
             Та энэ шалгалтыг өгсөн тул дахин өгөх боломжгүй.
           </p>
-          <Link
-            href="/exams"
-            className="mt-6 inline-flex rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-white/85 hover:bg-white/[0.05]"
-          >
-            ← Шалгалтын жагсаалт руу буцах
-          </Link>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <SebQuitLink className="inline-flex rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-500" />
+            <Link
+              href="/exams"
+              className="inline-flex rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-white/85 hover:bg-white/[0.05]"
+            >
+              ← Шалгалтын жагсаалт руу буцах
+            </Link>
+          </div>
         </div>
       </main>
     );
@@ -95,7 +97,6 @@ export default async function TakeExamPage({
         passPercent: exam.passPercent,
         questionCount: exam._count.items,
       }}
-      seb={{ required: exam.requireSeb, hasConfigFile: Boolean(exam.sebConfigFileName) }}
       resumable={Boolean(view?.running)}
     />
   );
