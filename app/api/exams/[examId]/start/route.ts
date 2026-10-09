@@ -6,7 +6,9 @@ import { getUserFromRequest } from "@/lib/auth";
 import { logEvent } from "@/lib/enforcement";
 import { appOrigin } from "@/lib/env";
 import { isDatabaseUnavailableError } from "@/lib/errors";
+import { clientInfoSchema } from "@/lib/exam-activity";
 import { buildExamSession, type SessionQuestion } from "@/lib/exam-build";
+import { recordActivity } from "@/lib/exam-log";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { isSameOrigin, jsonError, jsonSuccess } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
@@ -32,6 +34,8 @@ export async function POST(
   { params }: { params: Promise<{ examId: string }> },
 ) {
   if (!isSameOrigin(request)) return jsonError("Origin not allowed.", 403);
+  // With the time it answers, lets the page set its log clock by ours.
+  const receivedAt = Date.now();
   try {
     const user = await getUserFromRequest(request);
     if (!user) return jsonError("Шалгалт өгөхийн тулд нэвтэрнэ үү.", 401);
@@ -48,13 +52,20 @@ export async function POST(
     }
 
     // Every exam is taken in Safe Exam Browser.
-    const body = (await request.json().catch(() => null)) as { seb?: SebProof } | null;
+    const body = (await request.json().catch(() => null)) as {
+      seb?: SebProof;
+      client?: unknown;
+    } | null;
     const configKeys = examSebConfigKeys(appOrigin(request.url), examId, exam.sebConfigKeys);
     if (!hasValidSebProof({ configKeys, request, proof: body?.seb })) {
       return jsonError("Энэ шалгалтыг зөвхөн Safe Exam Browser-оор өгнө.", 403, {
         code: "SEB_REQUIRED",
       });
     }
+
+    // Screen, time zone… for the admin's log. Bad values are dropped, not fatal.
+    const client = clientInfoSchema.safeParse(body?.client ?? {});
+    const clientInfo = client.success ? client.data : undefined;
 
     const existing = await prisma.examSession.findUnique({
       where: { examId_userId: { examId, userId: user.id } },
@@ -81,6 +92,12 @@ export async function POST(
         prisma.examIntegrityEvent.count({
           where: { sessionId: existing.id, type: "fullscreen-exit" },
         }),
+        recordActivity({
+          sessionId: existing.id,
+          type: "resumed",
+          request,
+          metadata: clientInfo,
+        }),
       ]);
       return jsonSuccess({
         sessionId: existing.id,
@@ -92,6 +109,9 @@ export async function POST(
         // these so the learner sees the real count.
         focusLosses,
         fullscreenExits,
+        // The server's autosave, for a resume on a device without the local copy.
+        draftAnswers: existing.draftAnswers,
+        serverTime: { receivedAt, sentAt: Date.now() },
       });
     }
 
@@ -129,6 +149,7 @@ export async function POST(
     }
 
     logEvent("exam_started", { userId: user.id, examId, sessionId });
+    await recordActivity({ sessionId, type: "started", request, metadata: clientInfo });
     return jsonSuccess({
       sessionId,
       expiresAt: expiresAt.toISOString(),
@@ -137,6 +158,7 @@ export async function POST(
         token: await createAntiCheatToken({ userId: user.id, sessionId, expiresAt }),
       },
       resumed: false,
+      serverTime: { receivedAt, sentAt: Date.now() },
     });
   } catch (error) {
     if (isDatabaseUnavailableError(error)) {

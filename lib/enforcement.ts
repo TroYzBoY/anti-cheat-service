@@ -116,6 +116,16 @@ async function terminateSession({
 
   if (count > 0) {
     logEvent("exam_terminated", { userId, sessionId, reason });
+    // The admin's attempt log (lib/exam-log.ts); a lost line must not fail the verdict.
+    await prisma.examActivity
+      .create({ data: { sessionId, type: "terminated", metadata: { reason } } })
+      .catch((error: unknown) =>
+        logEvent("activity_log_failed", {
+          sessionId,
+          type: "terminated",
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
   }
 }
 

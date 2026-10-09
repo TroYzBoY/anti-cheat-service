@@ -27,8 +27,8 @@ users and its own Postgres database.
 
 - `lib/policy.ts` is shared by the browser SDK (`sdk/`) and the server. Keep
   it free of `server-only`, DOM and Node imports. So are `lib/exam-forms.ts`,
-  `lib/exam-import.ts`, `lib/exam-build.ts`, `lib/auth-schemas.ts` and
-  `lib/seb-urls.ts`, which the browser also runs.
+  `lib/exam-import.ts`, `lib/exam-build.ts`, `lib/exam-activity.ts`,
+  `lib/auth-schemas.ts` and `lib/seb-urls.ts`, which the browser also runs.
 - Server-only modules start with `import "server-only"`.
 - New env vars go in `lib/env.ts`; don't read `process.env` elsewhere.
 - Route handlers export `dynamic = "force-dynamic"`.

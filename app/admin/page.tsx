@@ -100,6 +100,9 @@ export default async function AdminExamsPage() {
                           <Link href={`/admin/exams/${exam.id}/results`} className={smallButton}>
                             Үр дүн
                           </Link>
+                          <Link href={`/admin/exams/${exam.id}/log`} className={smallButton}>
+                            Лог
+                          </Link>
                           <Link href={`/admin/exams/${exam.id}`} className={smallButton}>
                             Засах
                           </Link>

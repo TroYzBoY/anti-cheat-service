@@ -29,3 +29,7 @@ next-env.d.ts
 /lib/generated/prisma
 # Built from sdk/ by scripts/build-sdk.mjs on every dev/build.
 /public/sdk
+
+# Exam source files (questions and answer keys) stay out of git
+/*.docx
+/*.csv

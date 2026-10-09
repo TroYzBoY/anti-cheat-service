@@ -4,7 +4,9 @@ import { z } from "zod";
 import { getUserFromRequest } from "@/lib/auth";
 import { logEvent } from "@/lib/enforcement";
 import { isDatabaseUnavailableError } from "@/lib/errors";
+import { countAnswered } from "@/lib/exam-activity";
 import { gradeAnswers, UNANSWERED } from "@/lib/exam-build";
+import { recordActivity } from "@/lib/exam-log";
 import { appOrigin } from "@/lib/env";
 import { MAX_CHOICES } from "@/lib/exam-forms";
 import { isSameOrigin, jsonError, jsonSuccess } from "@/lib/http";
@@ -20,6 +22,8 @@ const SUBMIT_GRACE_MS = 30_000;
 const bodySchema = z.object({
   sessionId: z.string().min(1),
   answers: z.array(z.number().int().min(UNANSWERED).max(MAX_CHOICES - 1)),
+  /** The runner's timer sent it at 0:00, not the learner. */
+  auto: z.boolean().optional(),
   /** Safe Exam Browser's Config Key hash for the exam page (see lib/seb.ts). */
   seb: z
     .object({ configKeyHash: z.string().max(200), url: z.string().max(2000) })
@@ -57,6 +61,12 @@ export async function POST(request: NextRequest) {
       session.exam.sebConfigKeys,
     );
     if (!hasValidSebProof({ configKeys, request, proof: parsed.data.seb })) {
+      await recordActivity({
+        sessionId: session.id,
+        type: "submit-rejected",
+        request,
+        metadata: { reason: "seb" },
+      });
       return jsonError("Энэ шалгалтыг зөвхөн Safe Exam Browser-оор өгнө.", 403, {
         code: "SEB_REQUIRED",
       });
@@ -77,7 +87,15 @@ export async function POST(request: NextRequest) {
           correctCount: 0,
           passed: false,
           submittedAt: now,
+          // Kept so the admin sees what the late submit held.
+          draftAnswers: answers,
         },
+      });
+      await recordActivity({
+        sessionId: session.id,
+        type: "expired",
+        request,
+        metadata: { answered: countAnswered(answers), total: answers.length },
       });
       return jsonError("Хугацаа дууссан.", 400, { expired: true });
     }
@@ -109,6 +127,19 @@ export async function POST(request: NextRequest) {
       total,
       scorePercent,
       passed,
+    });
+    await recordActivity({
+      sessionId: session.id,
+      type: "submitted",
+      request,
+      metadata: {
+        auto: parsed.data.auto === true,
+        answered: countAnswered(answers),
+        total,
+        correct,
+        scorePercent,
+        passed,
+      },
     });
     return jsonSuccess({
       correct,

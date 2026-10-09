@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { createActivityReporter, type ActivityReporter } from "@/components/activity-reporter";
 import { SebQuitLink, sebProof, useInSeb } from "@/components/seb";
 import { loadAntiCheatSdk } from "@/lib/anti-cheat-sdk";
+import { estimateClockOffset, HEARTBEAT_MS, type ClientInfo } from "@/lib/exam-activity";
 import type { SessionQuestion } from "@/lib/exam-build";
 import { CHOICE_LABELS } from "@/lib/exam-forms";
 import { sebConfigPath } from "@/lib/seb-urls";
@@ -48,21 +50,23 @@ function storageKey(sessionId: string) {
   return `codequest.exam-form.${sessionId}`;
 }
 
-function readSavedAnswers(sessionId: string, count: number): number[] {
-  const blank = Array.from({ length: count }, () => UNANSWERED);
+function isAnswerList(value: unknown, count: number): value is number[] {
+  return (
+    Array.isArray(value) &&
+    value.length === count &&
+    value.every((answer) => Number.isInteger(answer))
+  );
+}
+
+/** This browser's copy of the answers, or null when it has none. */
+function readSavedAnswers(sessionId: string, count: number): number[] | null {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(storageKey(sessionId)) ?? "null");
-    if (
-      Array.isArray(parsed) &&
-      parsed.length === count &&
-      parsed.every((value) => Number.isInteger(value))
-    ) {
-      return parsed as number[];
-    }
+    if (isAnswerList(parsed, count)) return parsed;
   } catch {
-    /* private mode / corrupt value — start blank */
+    /* private mode / corrupt value — fall back to the server's copy */
   }
-  return blank;
+  return null;
 }
 
 function saveAnswers(sessionId: string, answers: number[]) {
@@ -80,6 +84,31 @@ function clearSavedAnswers(sessionId: string | null) {
   } catch {
     /* ignore */
   }
+}
+
+/** Device details for the admin's log of this attempt. */
+function clientInfo(seb: boolean): ClientInfo {
+  return {
+    screen: `${window.screen.width}×${window.screen.height}`,
+    viewport: `${window.innerWidth}×${window.innerHeight}`,
+    pixelRatio: Math.round(window.devicePixelRatio * 100) / 100,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    language: navigator.language,
+    seb,
+  };
+}
+
+/** Starts or resumes the attempt, timing the request to set the log clock. */
+async function requestStart(examId: string, body: string) {
+  const requestedAt = Date.now();
+  const res = await fetch(`/api/exams/${examId}/start`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body,
+  });
+  const data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  const clockOffset = estimateClockOffset(requestedAt, Date.now(), data?.serverTime);
+  return { res, data, clockOffset };
 }
 
 function exitFullscreen() {
@@ -156,6 +185,7 @@ export function ExamRunner({
   const [confirmingSubmit, setConfirmingSubmit] = useState(false);
 
   const acSessionRef = useRef<AntiCheatSession | null>(null);
+  const reporterRef = useRef<ActivityReporter | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const answersRef = useRef<number[]>([]);
   const submittingRef = useRef(false);
@@ -218,15 +248,48 @@ export function ExamRunner({
     if (phase !== "done" && phase !== "terminated") return;
     acSessionRef.current?.destroy();
     acSessionRef.current = null;
+    // Log lines still queued; the server takes them for a minute after the end.
+    const reporter = reporterRef.current;
+    reporterRef.current = null;
+    void reporter?.flush().finally(() => reporter.stop());
   }, [phase]);
 
   useEffect(
     () => () => {
       acSessionRef.current?.destroy();
       acSessionRef.current = null;
+      reporterRef.current?.stop();
+      reporterRef.current = null;
     },
     [],
   );
+
+  // For the admin's live view: a heartbeat while the learner reads, and
+  // every connection drop with how long it lasted.
+  useEffect(() => {
+    const reporter = reporterRef.current;
+    if (!reporter || phase !== "active") return;
+    let offlineSince: number | null = navigator.onLine ? null : Date.now();
+    const onOffline = () => {
+      offlineSince = Date.now();
+      reporter.record({ type: "offline" });
+    };
+    const onOnline = () => {
+      reporter.record({
+        type: "online",
+        ...(offlineSince === null ? {} : { offlineMs: Date.now() - offlineSince }),
+      });
+      offlineSince = null;
+    };
+    const heartbeat = window.setInterval(() => void reporter.flush(), HEARTBEAT_MS);
+    window.addEventListener("offline", onOffline);
+    window.addEventListener("online", onOnline);
+    return () => {
+      window.clearInterval(heartbeat);
+      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [phase]);
 
   // Countdown; auto-submits once when the clock reaches zero.
   useEffect(() => {
@@ -270,29 +333,28 @@ export function ExamRunner({
       return;
     }
 
-    let data: Record<string, unknown> | null = null;
+    let started: Awaited<ReturnType<typeof requestStart>>;
     try {
-      const res = await fetch(`/api/exams/${exam.id}/start`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ seb: await sebProof() }),
-      });
-      data = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-      if (!res.ok || !data?.ok) {
-        exitFullscreen();
-        setError(
-          typeof data?.message === "string"
-            ? data.message
-            : "Шалгалтыг эхлүүлж чадсангүй.",
-        );
-        setPhase("intro");
-        if (data?.code === "EXAM_ALREADY_TAKEN") router.refresh();
-        return;
-      }
+      started = await requestStart(
+        exam.id,
+        JSON.stringify({ seb: await sebProof(), client: clientInfo(inSeb) }),
+      );
     } catch {
       exitFullscreen();
       setError("Сүлжээний алдаа гарлаа. Дахин оролдоно уу.");
       setPhase("intro");
+      return;
+    }
+    const { res, data, clockOffset } = started;
+    if (!res.ok || !data?.ok) {
+      exitFullscreen();
+      setError(
+        typeof data?.message === "string"
+          ? data.message
+          : "Шалгалтыг эхлүүлж чадсангүй.",
+      );
+      setPhase("intro");
+      if (data?.code === "EXAM_ALREADY_TAKEN") router.refresh();
       return;
     }
 
@@ -331,7 +393,20 @@ export function ExamRunner({
       },
     });
 
-    const restored = readSavedAnswers(newSessionId, mcqs.length);
+    reporterRef.current?.stop();
+    reporterRef.current = createActivityReporter({
+      sessionId: newSessionId,
+      answers: () => answersRef.current,
+      clockOffset,
+    });
+
+    // This browser's copy is the freshest; the server's autosave covers a
+    // resume on another device.
+    const restored =
+      readSavedAnswers(newSessionId, mcqs.length) ??
+      (isAnswerList(data.draftAnswers, mcqs.length)
+        ? data.draftAnswers
+        : Array.from({ length: mcqs.length }, () => UNANSWERED));
     answersRef.current = restored;
     autoSubmittedRef.current = false;
     const expires = new Date(String(data.expiresAt)).getTime();
@@ -348,11 +423,19 @@ export function ExamRunner({
 
   const choose = (questionIndex: number, choiceIndex: number) => {
     if (phase !== "active" || !sessionId) return;
+    const previousIndex = answersRef.current[questionIndex] ?? UNANSWERED;
+    if (previousIndex === choiceIndex) return;
     const next = [...answersRef.current];
     next[questionIndex] = choiceIndex;
     answersRef.current = next;
     setAnswers(next);
     saveAnswers(sessionId, next);
+    reporterRef.current?.record({
+      type: "answer",
+      questionIndex,
+      choiceIndex,
+      previousIndex,
+    });
   };
 
   const submit = useCallback(
@@ -363,12 +446,15 @@ export function ExamRunner({
       setError(null);
       setPhase("submitting");
       try {
+        // The last answer changes reach the log before the attempt closes.
+        await reporterRef.current?.flushWithin(3_000);
         const res = await fetch("/api/exams/submit", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             sessionId,
             answers: answersRef.current,
+            auto,
             seb: await sebProof(),
           }),
         });

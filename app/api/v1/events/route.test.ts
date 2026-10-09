@@ -6,6 +6,7 @@ const findSessionMock = vi.fn();
 const countEventsMock = vi.fn();
 const createEventMock = vi.fn();
 const updateSessionsMock = vi.fn();
+const createActivityMock = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -16,6 +17,9 @@ vi.mock("@/lib/prisma", () => ({
     examIntegrityEvent: {
       count: (...args: unknown[]) => countEventsMock(...args),
       create: (...args: unknown[]) => createEventMock(...args),
+    },
+    examActivity: {
+      create: (...args: unknown[]) => createActivityMock(...args),
     },
   },
 }));
@@ -60,6 +64,8 @@ describe("POST /api/v1/events", () => {
     createEventMock.mockResolvedValue({});
     updateSessionsMock.mockReset();
     updateSessionsMock.mockResolvedValue({ count: 1 });
+    createActivityMock.mockReset();
+    createActivityMock.mockResolvedValue({});
   });
 
   it("rejects missing or forged tokens", async () => {
@@ -83,6 +89,7 @@ describe("POST /api/v1/events", () => {
     expect(json).toMatchObject({ ok: true, active: true, count: 2, limit: 3, terminated: null });
     expect(createEventMock).toHaveBeenCalledOnce();
     expect(updateSessionsMock).not.toHaveBeenCalled();
+    expect(createActivityMock).not.toHaveBeenCalled();
   });
 
   it("bans the attempt on the first focus loss", async () => {
@@ -98,6 +105,15 @@ describe("POST /api/v1/events", () => {
         scorePercent: 0,
       }),
     });
+    expect(createActivityMock).toHaveBeenCalledWith({
+      data: { sessionId: "session-1", type: "terminated", metadata: { reason: "focus-loss-limit" } },
+    });
+  });
+
+  it("still ends the attempt when its log line can't be written", async () => {
+    createActivityMock.mockRejectedValue(new Error("db hiccup"));
+    const json = await (await post({ type: "screenshot" })).json();
+    expect(json).toMatchObject({ active: false, terminated: "screenshot" });
   });
 
   it("terminates immediately on devtools", async () => {

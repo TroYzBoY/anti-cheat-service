@@ -15,7 +15,7 @@ export function PageHeader({
         <h1 className="text-3xl font-semibold tracking-tight text-white">{title}</h1>
         {subtitle ? <p className="mt-2 max-w-2xl text-[15px] text-white/65">{subtitle}</p> : null}
       </div>
-      {action ? <div className="flex items-center gap-2">{action}</div> : null}
+      {action ? <div className="flex flex-wrap items-center gap-2">{action}</div> : null}
     </header>
   );
 }
@@ -80,3 +80,7 @@ export function EmptyState({ title, description }: { title: string; description?
 
 export const smallButton =
   "rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-[12px] text-white/80 hover:bg-white/[0.08] hover:text-white";
+
+/** Secondary action in a page header (edit, export…). */
+export const headerButton =
+  "rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white/75 hover:bg-white/[0.08] hover:text-white";

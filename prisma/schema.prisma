@@ -116,6 +116,11 @@ model ExamSession {
   answerKey         Int[]
   /// Submitted choice index per question; -1 = left unanswered.
   answers           Int[]                @default([])
+  /// Choices autosaved by the exam page while the attempt runs (-1 = none),
+  /// so admins see live progress and what an attempt held when it ended.
+  draftAnswers      Int[]                @default([])
+  /// Last request from the exam page (an answer or the heartbeat).
+  lastSeenAt        DateTime?
   correctCount      Int?
   scorePercent      Int?
   passed            Boolean?
@@ -123,10 +128,34 @@ model ExamSession {
   exam              Exam                 @relation(fields: [examId], references: [id], onDelete: Cascade)
   user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   events            ExamIntegrityEvent[]
+  activities        ExamActivity[]
 
   @@unique([examId, userId])
   @@index([userId])
   @@index([status])
+}
+
+/// The admin's detailed log of one attempt: start and resume (with IP and
+/// device), every answer change, connection drops, submit and the end.
+/// Anti-cheat signals stay in `ExamIntegrityEvent`; the admin log merges both.
+model ExamActivity {
+  id            String      @id @default(cuid())
+  sessionId     String
+  /// See ACTIVITY_TYPES in lib/exam-activity.ts.
+  type          String
+  /// Session-order question index (`answer` only).
+  questionIndex Int?
+  /// The choice picked, -1 = cleared (`answer` only).
+  choiceIndex   Int?
+  /// The choice before this change, -1 = none (`answer` only).
+  previousIndex Int?
+  ip            String?
+  userAgent     String?
+  metadata      Json?
+  createdAt     DateTime    @default(now())
+  session       ExamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
 }
 
 /// One row per anti-cheat signal reported by the browser SDK. The server

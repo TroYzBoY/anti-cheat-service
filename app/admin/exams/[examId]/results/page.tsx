@@ -7,14 +7,16 @@ import { ConfirmSubmitButton } from "@/components/admin/confirm-submit-button";
 import {
   Card,
   EmptyState,
+  headerButton,
   PageHeader,
   Pill,
   smallButton,
   StatCard,
 } from "@/components/admin/ui";
 import { requireAdmin } from "@/lib/auth";
+import { formatDateTime, formatDuration, VIOLATION_LABELS } from "@/lib/exam-activity";
 import { EXAM_STATUS_LABELS, isExamStatus } from "@/lib/exam-forms";
-import { loadExamResults, VIOLATION_LABELS } from "@/lib/exam-results";
+import { loadExamResults } from "@/lib/exam-results";
 import { MAX_FOCUS_LOSSES } from "@/lib/policy";
 import { prisma } from "@/lib/prisma";
 
@@ -66,17 +68,32 @@ export default async function ExamResultsPage({
         subtitle={`${EXAM_STATUS_LABELS[status]} · ${exam._count.items} асуулт · ${exam.durationMinutes} минут · тэнцэх ${exam.passPercent}%`}
         action={
           <>
-            <Link
-              href={`/admin/exams/${exam.id}`}
-              className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white/75 hover:bg-white/[0.08] hover:text-white"
-            >
+            <Link href={`/admin/exams/${exam.id}`} className={headerButton}>
               Засах
             </Link>
+            <Link href={`/admin/exams/${exam.id}/log`} className={headerButton}>
+              Лог
+            </Link>
             <a
-              href={`/api/admin/exams/${exam.id}/export`}
-              className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-white/75 hover:bg-white/[0.08] hover:text-white"
+              href={`/api/admin/exams/${exam.id}/export?kind=summary`}
+              className={headerButton}
+              title="Оролцогч бүрийн төлөв, оноо, зөрчил, IP, хугацаа"
             >
-              ↓ Excel (CSV)
+              ↓ Үр дүн (CSV)
+            </a>
+            <a
+              href={`/api/admin/exams/${exam.id}/export?kind=answers`}
+              className={headerButton}
+              title="Оролцогч бүрийн асуулт тус бүрд сонгосон хариулт (✓/✗)"
+            >
+              ↓ Хариултууд (CSV)
+            </a>
+            <a
+              href={`/api/admin/exams/${exam.id}/export?kind=log`}
+              className={headerButton}
+              title="Хариулт сонгосон, өөрчилсөн, зөрчил, сүлжээ тасарсан бүх үйлдэл"
+            >
+              ↓ Бүрэн лог (CSV)
             </a>
           </>
         }
@@ -137,9 +154,25 @@ export default async function ExamResultsPage({
                       <td className="px-4 py-3">
                         <p className="font-medium text-white">{row.fullName}</p>
                         <p className="truncate text-[11px] text-white/45">{row.email}</p>
+                        {row.ips.length > 0 ? (
+                          <p
+                            className={`mt-0.5 font-mono text-[11px] ${
+                              row.ips.length > 1 ? "text-amber-300" : "text-white/35"
+                            }`}
+                            title={row.ips.length > 1 ? "Шалгалтын явцад өөр өөр IP-аас хандсан" : "IP хаяг"}
+                          >
+                            {row.ips.length > 1 ? "⚠ " : ""}
+                            {row.ips.join(", ")}
+                          </p>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3">
                         <Pill tone={row.statusTone}>{row.statusLabel}</Pill>
+                        {row.running && row.lastSeenAt ? (
+                          <p className="mt-1 whitespace-nowrap text-[11px] text-white/45">
+                            Сүүлд идэвхтэй {formatDateTime(row.lastSeenAt).slice(11)}
+                          </p>
+                        ) : null}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">
                         {row.status === "SUBMITTED" && row.scorePercent !== null ? (
@@ -156,6 +189,11 @@ export default async function ExamResultsPage({
                         ) : (
                           <span className="text-white/35">—</span>
                         )}
+                        {row.status !== "SUBMITTED" && row.answered > 0 ? (
+                          <p className="whitespace-nowrap text-[11px] text-white/45">
+                            {row.answered}/{row.total} хариулсан
+                          </p>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -185,6 +223,11 @@ export default async function ExamResultsPage({
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-[12px] text-white/55">
                         {row.submittedAt ? dateFormat.format(row.submittedAt) : "—"}
+                        {row.durationMs !== null ? (
+                          <p className="text-[11px] text-white/40">
+                            {formatDuration(row.durationMs)} {row.running ? "явж байна" : "зарцуулсан"}
+                          </p>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap justify-end gap-1">
